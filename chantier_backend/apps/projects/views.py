@@ -7,7 +7,7 @@ from rest_framework.response import Response
 
 from apps.accounts.models import Membership, Tenant
 from apps.common.viewsets import TenantModelViewSet
-from apps.common.permissions import HasTenantContext, IsTenantMember, TenantObjectPermission
+from apps.common.permissions import HasRolePermission, HasTenantContext, IsTenantMember, TenantObjectPermission
 from apps.projects.models import Lot, Project, Stakeholder
 from apps.projects.serializers import LotSerializer, ProjectSerializer, StakeholderSerializer
 from apps.projects.services import InvalidProjectStatusTransition, create_project, transition_project_status
@@ -15,7 +15,14 @@ from apps.projects.services import InvalidProjectStatusTransition, create_projec
 
 class ProjectViewSet(viewsets.ModelViewSet):
     serializer_class = ProjectSerializer
-    permission_classes = [IsAuthenticated, HasTenantContext, IsTenantMember, TenantObjectPermission]
+    permission_classes = [
+        IsAuthenticated,
+        HasTenantContext,
+        IsTenantMember,
+        HasRolePermission,
+        TenantObjectPermission,
+    ]
+    resource_name = "projects"
     search_fields = ["name", "code", "client_name"]
     ordering_fields = ["name", "code", "planned_start_date", "status", "created_at"]
     filterset_fields = ["status", "currency"]

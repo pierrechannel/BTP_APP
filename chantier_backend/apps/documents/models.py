@@ -30,3 +30,27 @@ class DocumentVersion(TenantOwnedModel):
     size = models.PositiveBigIntegerField(default=0)
     checksum = models.CharField(max_length=128, blank=True)
     is_current = models.BooleanField(default=True)
+
+
+class DocumentAcl(TenantOwnedModel):
+    READ = "read"
+    WRITE = "write"
+    APPROVE = "approve"
+
+    document = models.ForeignKey(Document, on_delete=models.CASCADE, related_name="acls")
+    role = models.ForeignKey("accounts.Role", null=True, blank=True, on_delete=models.CASCADE)
+    user = models.ForeignKey("accounts.User", null=True, blank=True, on_delete=models.CASCADE)
+    permission = models.CharField(max_length=20, default=READ)
+
+
+class ApprovalWorkflow(TenantOwnedModel):
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+
+    document = models.ForeignKey(Document, on_delete=models.CASCADE, related_name="approval_workflows")
+    requested_by = models.ForeignKey("accounts.User", on_delete=models.PROTECT, related_name="+")
+    reviewer = models.ForeignKey("accounts.User", null=True, blank=True, on_delete=models.PROTECT, related_name="+")
+    status = models.CharField(max_length=20, default=PENDING)
+    comment = models.TextField(blank=True)
+    decided_at = models.DateTimeField(null=True, blank=True)

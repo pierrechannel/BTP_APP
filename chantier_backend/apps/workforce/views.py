@@ -2,8 +2,14 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from apps.common.viewsets import TenantModelViewSet
-from apps.workforce.models import TimeEntry, Worker
-from apps.workforce.serializers import TimeEntrySerializer, WorkerSerializer
+from apps.workforce.models import Assignment, Certification, TimeEntry, Worker, WorkerCertification
+from apps.workforce.serializers import (
+    AssignmentSerializer,
+    CertificationSerializer,
+    TimeEntrySerializer,
+    WorkerCertificationSerializer,
+    WorkerSerializer,
+)
 from apps.workforce.services import validate_time_entry
 
 
@@ -23,3 +29,21 @@ class TimeEntryViewSet(TenantModelViewSet):
     def validate(self, request, pk=None):
         time_entry = validate_time_entry(self.get_object(), request.user)
         return Response(self.get_serializer(time_entry).data)
+
+
+class CertificationViewSet(TenantModelViewSet):
+    queryset = Certification.objects.select_related("tenant")
+    serializer_class = CertificationSerializer
+    search_fields = ["code", "name"]
+
+
+class WorkerCertificationViewSet(TenantModelViewSet):
+    queryset = WorkerCertification.objects.select_related("worker", "certification", "tenant")
+    serializer_class = WorkerCertificationSerializer
+    filterset_fields = ["worker", "certification", "expires_at"]
+
+
+class AssignmentViewSet(TenantModelViewSet):
+    queryset = Assignment.objects.select_related("worker", "project", "task", "tenant")
+    serializer_class = AssignmentSerializer
+    filterset_fields = ["worker", "project", "task", "start_date", "end_date"]

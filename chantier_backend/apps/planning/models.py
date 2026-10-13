@@ -21,3 +21,31 @@ class Task(TenantOwnedModel):
 
     class Meta:
         indexes = [models.Index(fields=["tenant", "project", "status"])]
+
+
+class TaskDependency(TenantOwnedModel):
+    FINISH_START = "FS"
+    START_START = "SS"
+    FINISH_FINISH = "FF"
+    START_FINISH = "SF"
+
+    TYPE_CHOICES = [
+        (FINISH_START, "Finish to start"),
+        (START_START, "Start to start"),
+        (FINISH_FINISH, "Finish to finish"),
+        (START_FINISH, "Start to finish"),
+    ]
+
+    predecessor = models.ForeignKey(Task, on_delete=models.CASCADE, related_name="successor_links")
+    successor = models.ForeignKey(Task, on_delete=models.CASCADE, related_name="predecessor_links")
+    dependency_type = models.CharField(max_length=2, choices=TYPE_CHOICES, default=FINISH_START)
+    lag_days = models.IntegerField(default=0)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["predecessor", "successor", "dependency_type"],
+                name="unique_task_dependency",
+            )
+        ]
+        indexes = [models.Index(fields=["tenant", "predecessor", "successor"])]

@@ -1,10 +1,8 @@
-from rest_framework import serializers
-
-from apps.common.serializers import TENANT_OWNED_READ_ONLY_FIELDS
+from apps.common.serializers import TENANT_OWNED_READ_ONLY_FIELDS, TenantOwnedModelSerializer
 from apps.sync.models import SyncMutation
 
 
-class SyncMutationSerializer(serializers.ModelSerializer):
+class SyncMutationSerializer(TenantOwnedModelSerializer):
     class Meta:
         model = SyncMutation
         fields = "__all__"

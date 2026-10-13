@@ -3,8 +3,8 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from apps.common.viewsets import TenantModelViewSet
-from apps.planning.models import Task
-from apps.planning.serializers import TaskSerializer
+from apps.planning.models import Task, TaskDependency
+from apps.planning.serializers import TaskDependencySerializer, TaskSerializer
 from apps.planning.services import update_task_progress
 
 
@@ -27,3 +27,9 @@ class TaskViewSet(TenantModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         return Response(self.get_serializer(task).data)
+
+
+class TaskDependencyViewSet(TenantModelViewSet):
+    queryset = TaskDependency.objects.select_related("predecessor", "successor", "tenant")
+    serializer_class = TaskDependencySerializer
+    filterset_fields = ["predecessor", "successor", "dependency_type"]

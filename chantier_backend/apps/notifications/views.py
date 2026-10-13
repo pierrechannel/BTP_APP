@@ -2,8 +2,13 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from apps.common.viewsets import TenantModelViewSet
-from apps.notifications.models import Message, Notification
-from apps.notifications.serializers import MessageSerializer, NotificationSerializer
+from apps.notifications.models import Channel, Message, Notification, NotificationPreference
+from apps.notifications.serializers import (
+    ChannelSerializer,
+    MessageSerializer,
+    NotificationPreferenceSerializer,
+    NotificationSerializer,
+)
 from apps.notifications.services import mark_notification_read
 
 
@@ -24,3 +29,16 @@ class MessageViewSet(TenantModelViewSet):
     serializer_class = MessageSerializer
     filterset_fields = ["project", "sender"]
     search_fields = ["body"]
+
+
+class NotificationPreferenceViewSet(TenantModelViewSet):
+    queryset = NotificationPreference.objects.select_related("user", "tenant")
+    serializer_class = NotificationPreferenceSerializer
+    filterset_fields = ["user", "event_type", "email_enabled", "push_enabled", "in_app_enabled"]
+
+
+class ChannelViewSet(TenantModelViewSet):
+    queryset = Channel.objects.select_related("project", "tenant")
+    serializer_class = ChannelSerializer
+    filterset_fields = ["project"]
+    search_fields = ["name", "description"]

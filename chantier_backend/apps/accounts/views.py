@@ -38,6 +38,9 @@ class TenantViewSet(ReadOnlyModelViewSet):
 class UserViewSet(ModelViewSet):
     serializer_class = UserSerializer
     permission_classes = [IsAuthenticated, HasTenantContext, IsTenantMember]
+    ordering = "-date_joined"
+    ordering_fields = ["date_joined", "email", "username", "last_name"]
+    search_fields = ["email", "username", "first_name", "last_name"]
 
     def get_queryset(self):
         return User.objects.filter(memberships__tenant_id=self.request.tenant_id).distinct()

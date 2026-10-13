@@ -14,6 +14,23 @@ Le developpement local utilise SQLite par defaut.
 .\.venv\Scripts\python.exe manage.py runserver
 ```
 
+Tests:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements.dev.txt
+.\.venv\Scripts\pytest
+```
+
+Frontend React admin:
+
+```powershell
+cd chantier_frontend
+npm install
+npm run dev
+```
+
+Le frontend attend le backend sur `http://127.0.0.1:8000/api/v1`.
+
 Compte demo cree par `seed_demo`:
 
 - email: `admin@chantier.local`

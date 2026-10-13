@@ -3,8 +3,20 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from apps.common.viewsets import TenantModelViewSet
-from apps.equipment.models import Equipment
-from apps.equipment.serializers import EquipmentSerializer
+from apps.equipment.models import (
+    Equipment,
+    EquipmentAssignment,
+    MaintenancePlan,
+    MaintenanceRecord,
+    UsageLog,
+)
+from apps.equipment.serializers import (
+    EquipmentAssignmentSerializer,
+    EquipmentSerializer,
+    MaintenancePlanSerializer,
+    MaintenanceRecordSerializer,
+    UsageLogSerializer,
+)
 from apps.equipment.services import update_equipment_state
 
 
@@ -24,3 +36,28 @@ class EquipmentViewSet(TenantModelViewSet):
             )
         equipment = update_equipment_state(self.get_object(), state, request.user)
         return Response(self.get_serializer(equipment).data)
+
+
+class EquipmentAssignmentViewSet(TenantModelViewSet):
+    queryset = EquipmentAssignment.objects.select_related("equipment", "project", "tenant")
+    serializer_class = EquipmentAssignmentSerializer
+    filterset_fields = ["equipment", "project", "start_date", "end_date"]
+
+
+class MaintenancePlanViewSet(TenantModelViewSet):
+    queryset = MaintenancePlan.objects.select_related("equipment", "tenant")
+    serializer_class = MaintenancePlanSerializer
+    filterset_fields = ["equipment", "next_due_date"]
+    search_fields = ["name"]
+
+
+class MaintenanceRecordViewSet(TenantModelViewSet):
+    queryset = MaintenanceRecord.objects.select_related("equipment", "maintenance_plan", "tenant")
+    serializer_class = MaintenanceRecordSerializer
+    filterset_fields = ["equipment", "maintenance_plan", "performed_at"]
+
+
+class UsageLogViewSet(TenantModelViewSet):
+    queryset = UsageLog.objects.select_related("equipment", "project", "tenant")
+    serializer_class = UsageLogSerializer
+    filterset_fields = ["equipment", "project", "usage_date"]

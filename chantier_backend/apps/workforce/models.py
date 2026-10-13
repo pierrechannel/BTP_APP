@@ -19,3 +19,37 @@ class TimeEntry(TenantOwnedModel):
     normal_hours = models.DecimalField(max_digits=5, decimal_places=2, default=0)
     overtime_hours = models.DecimalField(max_digits=5, decimal_places=2, default=0)
     is_validated = models.BooleanField(default=False)
+
+
+class Certification(TenantOwnedModel):
+    code = models.CharField(max_length=80)
+    name = models.CharField(max_length=255)
+    description = models.TextField(blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["tenant", "code"], name="unique_certification_per_tenant")
+        ]
+
+
+class WorkerCertification(TenantOwnedModel):
+    worker = models.ForeignKey(Worker, on_delete=models.CASCADE, related_name="certifications")
+    certification = models.ForeignKey(Certification, on_delete=models.PROTECT)
+    issued_at = models.DateField(null=True, blank=True)
+    expires_at = models.DateField(null=True, blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["worker", "certification"], name="unique_worker_certification"
+            )
+        ]
+
+
+class Assignment(TenantOwnedModel):
+    worker = models.ForeignKey(Worker, on_delete=models.CASCADE, related_name="assignments")
+    project = models.ForeignKey("projects.Project", on_delete=models.CASCADE)
+    task = models.ForeignKey("planning.Task", null=True, blank=True, on_delete=models.SET_NULL)
+    start_date = models.DateField()
+    end_date = models.DateField(null=True, blank=True)
+    role = models.CharField(max_length=120, blank=True)

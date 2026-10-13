@@ -14,3 +14,4 @@ ignore = ["DJ001"]
 DJANGO_SETTINGS_MODULE = "config.settings.test"
 python_files = ["test_*.py", "*_tests.py"]
 addopts = "--reuse-db"
+pythonpath = ["chantier_backend"]

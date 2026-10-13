@@ -1,6 +1,7 @@
 from rest_framework import serializers
 
 from apps.accounts.models import AuditLog, Device, Membership, Role, Tenant, User
+from apps.common.serializers import TenantValidationMixin
 
 
 class TenantSerializer(serializers.ModelSerializer):
@@ -53,14 +54,14 @@ class UserSerializer(serializers.ModelSerializer):
         read_only_fields = ["id"]
 
 
-class RoleSerializer(serializers.ModelSerializer):
+class RoleSerializer(TenantValidationMixin, serializers.ModelSerializer):
     class Meta:
         model = Role
         fields = ["id", "tenant", "code", "name", "permissions", "created_at", "updated_at"]
         read_only_fields = ["id", "tenant", "created_at", "updated_at"]
 
 
-class MembershipWriteSerializer(serializers.ModelSerializer):
+class MembershipWriteSerializer(TenantValidationMixin, serializers.ModelSerializer):
     class Meta:
         model = Membership
         fields = ["id", "user", "tenant", "role", "is_active", "created_at", "updated_at"]
@@ -74,7 +75,7 @@ class AuditLogSerializer(serializers.ModelSerializer):
         read_only_fields = ["id", "created_at"]
 
 
-class DeviceSerializer(serializers.ModelSerializer):
+class DeviceSerializer(TenantValidationMixin, serializers.ModelSerializer):
     class Meta:
         model = Device
         fields = ["id", "tenant", "user", "name", "platform", "push_token", "last_seen_at", "is_active"]

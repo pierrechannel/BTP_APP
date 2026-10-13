@@ -1,17 +1,17 @@
 from rest_framework import serializers
 
-from apps.common.serializers import TENANT_OWNED_READ_ONLY_FIELDS
-from apps.workforce.models import TimeEntry, Worker
+from apps.common.serializers import TENANT_OWNED_READ_ONLY_FIELDS, TenantOwnedModelSerializer
+from apps.workforce.models import Assignment, Certification, TimeEntry, Worker, WorkerCertification
 
 
-class WorkerSerializer(serializers.ModelSerializer):
+class WorkerSerializer(TenantOwnedModelSerializer):
     class Meta:
         model = Worker
         fields = "__all__"
         read_only_fields = TENANT_OWNED_READ_ONLY_FIELDS
 
 
-class TimeEntrySerializer(serializers.ModelSerializer):
+class TimeEntrySerializer(TenantOwnedModelSerializer):
     class Meta:
         model = TimeEntry
         fields = "__all__"
@@ -23,3 +23,24 @@ class TimeEntrySerializer(serializers.ModelSerializer):
         if normal < 0 or overtime < 0:
             raise serializers.ValidationError("Les heures ne peuvent pas etre negatives.")
         return attrs
+
+
+class CertificationSerializer(TenantOwnedModelSerializer):
+    class Meta:
+        model = Certification
+        fields = "__all__"
+        read_only_fields = TENANT_OWNED_READ_ONLY_FIELDS
+
+
+class WorkerCertificationSerializer(TenantOwnedModelSerializer):
+    class Meta:
+        model = WorkerCertification
+        fields = "__all__"
+        read_only_fields = TENANT_OWNED_READ_ONLY_FIELDS
+
+
+class AssignmentSerializer(TenantOwnedModelSerializer):
+    class Meta:
+        model = Assignment
+        fields = "__all__"
+        read_only_fields = TENANT_OWNED_READ_ONLY_FIELDS

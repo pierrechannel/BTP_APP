@@ -3,12 +3,28 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.viewsets import ModelViewSet
 
 from apps.accounts.models import Tenant
-from apps.common.permissions import HasTenantContext, IsTenantMember, TenantObjectPermission
+from apps.common.permissions import (
+    HasRolePermission,
+    HasTenantContext,
+    IsTenantMember,
+    TenantObjectPermission,
+)
 
 
 class TenantModelViewSet(ModelViewSet):
-    permission_classes = [IsAuthenticated, HasTenantContext, IsTenantMember, TenantObjectPermission]
+    permission_classes = [
+        IsAuthenticated,
+        HasTenantContext,
+        IsTenantMember,
+        HasRolePermission,
+        TenantObjectPermission,
+    ]
     ordering_fields = ["created_at", "updated_at"]
+
+    @property
+    def resource_name(self):
+        model = getattr(getattr(self, "queryset", None), "model", None)
+        return getattr(getattr(model, "_meta", None), "app_label", None)
 
     def get_queryset(self):
         queryset = super().get_queryset()

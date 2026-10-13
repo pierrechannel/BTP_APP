@@ -9,3 +9,7 @@ media/
 .mypy_cache/
 .coverage
 htmlcov/
+chantier_frontend/node_modules
+chantier_frontend/dist
+chantier_frontend/node_modules.partial
+

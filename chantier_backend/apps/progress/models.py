@@ -24,3 +24,27 @@ class Photo(TenantOwnedModel):
     taken_at = models.DateTimeField(null=True, blank=True)
     latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
     longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+
+
+class ProgressUpdate(TenantOwnedModel):
+    project = models.ForeignKey("projects.Project", on_delete=models.CASCADE, related_name="progress_updates")
+    task = models.ForeignKey("planning.Task", on_delete=models.CASCADE, related_name="progress_updates")
+    progress_percent = models.PositiveSmallIntegerField(default=0)
+    notes = models.TextField(blank=True)
+    update_date = models.DateField()
+
+
+class Snag(TenantOwnedModel):
+    OPEN = "open"
+    IN_PROGRESS = "in_progress"
+    RESOLVED = "resolved"
+    CLOSED = "closed"
+
+    project = models.ForeignKey("projects.Project", on_delete=models.CASCADE, related_name="snags")
+    task = models.ForeignKey("planning.Task", null=True, blank=True, on_delete=models.SET_NULL)
+    title = models.CharField(max_length=255)
+    description = models.TextField(blank=True)
+    responsible_name = models.CharField(max_length=255, blank=True)
+    due_date = models.DateField(null=True, blank=True)
+    status = models.CharField(max_length=20, default=OPEN)
+    resolved_at = models.DateTimeField(null=True, blank=True)
