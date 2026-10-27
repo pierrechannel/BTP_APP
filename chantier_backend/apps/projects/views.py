@@ -1,6 +1,6 @@
-from django.db.models import Count
+from django.db.models import Count, Q
 from django.shortcuts import get_object_or_404
-from rest_framework import status, viewsets
+from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -13,7 +13,7 @@ from apps.projects.serializers import LotSerializer, ProjectSerializer, Stakehol
 from apps.projects.services import InvalidProjectStatusTransition, create_project, transition_project_status
 
 
-class ProjectViewSet(viewsets.ModelViewSet):
+class ProjectViewSet(TenantModelViewSet):
     serializer_class = ProjectSerializer
     permission_classes = [
         IsAuthenticated,
@@ -30,13 +30,14 @@ class ProjectViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         return (
             Project.objects.filter(tenant_id=self.request.tenant_id, deleted_at__isnull=True)
-            .annotate(lots_count=Count("lots"))
+            .annotate(lots_count=Count("lots", filter=Q(lots__deleted_at__isnull=True)))
             .select_related("tenant")
         )
 
     def perform_create(self, serializer):
         tenant = get_object_or_404(Tenant, id=self.request.tenant_id, is_active=True)
-        get_object_or_404(Membership, tenant=tenant, user=self.request.user, is_active=True)
+        if not self.request.user.is_superuser:
+            get_object_or_404(Membership, tenant=tenant, user=self.request.user, is_active=True)
         project = create_project(tenant=tenant, user=self.request.user, data=serializer.validated_data)
         serializer.instance = project
 

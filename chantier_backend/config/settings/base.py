@@ -8,7 +8,7 @@ import os
 BASE_DIR = Path(__file__).resolve().parents[3]
 load_dotenv(BASE_DIR / ".env")
 
-SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "unsafe-dev-key")
+SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "django-insecure-local-development-only-change-before-production-2026")
 DEBUG = os.getenv("DJANGO_DEBUG", "false").lower() == "true"
 ALLOWED_HOSTS = [host.strip() for host in os.getenv("DJANGO_ALLOWED_HOSTS", "").split(",") if host]
 
@@ -106,6 +106,7 @@ MEDIA_ROOT = BASE_DIR / "media"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 REST_FRAMEWORK = {
+    "DEFAULT_METADATA_CLASS": "apps.common.metadata.ApplicationMetadata",
     "DEFAULT_AUTHENTICATION_CLASSES": (
         "rest_framework_simplejwt.authentication.JWTAuthentication",
     ),
@@ -130,10 +131,16 @@ SPECTACULAR_SETTINGS = {
 CORS_ALLOWED_ORIGINS = [
     origin.strip() for origin in os.getenv("CORS_ALLOWED_ORIGINS", "").split(",") if origin
 ]
+from corsheaders.defaults import default_headers
+CORS_ALLOW_HEADERS = list(default_headers) + ["x-tenant-id", "if-match"]
+CORS_EXPOSE_HEADERS = ["ETag", "X-Correlation-ID"]
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 CELERY_BROKER_URL = REDIS_URL
 CELERY_RESULT_BACKEND = REDIS_URL
+CELERY_TASK_PUBLISH_RETRY = False
+CELERY_BROKER_CONNECTION_TIMEOUT = 5
+REPORTS_ASYNC = os.getenv("REPORTS_ASYNC", "false").lower() == "true"
 
 CHANNEL_LAYERS = {
     "default": {

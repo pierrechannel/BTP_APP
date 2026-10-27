@@ -15,6 +15,9 @@ from apps.resources.serializers import (
     StockMovementSerializer,
     SupplierSerializer,
 )
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from apps.resources.stock import stock_at
 
 
 class MaterialViewSet(TenantModelViewSet):
@@ -22,6 +25,16 @@ class MaterialViewSet(TenantModelViewSet):
     serializer_class = MaterialSerializer
     filterset_fields = ["currency", "unit"]
     search_fields = ["reference", "name"]
+
+    @action(detail=True, methods=["get"])
+    def stock(self, request, pk=None):
+        material = self.get_object()
+        locations = StockLocation.objects.filter(tenant_id=request.tenant_id, deleted_at__isnull=True)
+        project_id = request.query_params.get("project")
+        if project_id:
+            locations = locations.filter(project_id=project_id)
+        return Response([{"location": location.pk, "name": location.name, "quantity": stock_at(material, location),
+                          "unit": material.unit} for location in locations])
 
 
 class SupplierViewSet(TenantModelViewSet):
@@ -51,6 +64,7 @@ class StockLocationViewSet(TenantModelViewSet):
 
 
 class StockMovementViewSet(TenantModelViewSet):
+    http_method_names = ["get", "post", "head", "options"]
     queryset = StockMovement.objects.select_related(
         "material", "source_location", "target_location", "tenant"
     )

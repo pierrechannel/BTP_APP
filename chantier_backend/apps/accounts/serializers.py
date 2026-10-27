@@ -13,10 +13,11 @@ class TenantSerializer(serializers.ModelSerializer):
 class MembershipSerializer(serializers.ModelSerializer):
     tenant = TenantSerializer(read_only=True)
     role = serializers.CharField(source="role.code", read_only=True)
+    permissions = serializers.JSONField(source="role.permissions", read_only=True)
 
     class Meta:
         model = Membership
-        fields = ["id", "tenant", "role", "is_active"]
+        fields = ["id", "tenant", "role", "permissions", "is_active"]
 
 
 class UserMeSerializer(serializers.ModelSerializer):
@@ -34,10 +35,17 @@ class UserMeSerializer(serializers.ModelSerializer):
             "timezone",
             "preferred_currency",
             "memberships",
+            "is_superuser",
         ]
 
 
 class UserSerializer(serializers.ModelSerializer):
+    def create(self, validated_data):
+        user = User(**validated_data)
+        user.set_unusable_password()
+        user.save()
+        return user
+
     class Meta:
         model = User
         fields = [

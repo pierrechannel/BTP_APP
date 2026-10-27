@@ -1,8 +1,13 @@
 from apps.progress.models import DailyReport
 from apps.progress.models import Snag
+from rest_framework.exceptions import ValidationError
 
 
 def submit_daily_report(report: DailyReport, user) -> DailyReport:
+    if report.status == DailyReport.SUBMITTED:
+        return report
+    if report.status != DailyReport.DRAFT:
+        raise ValidationError("Seul un brouillon peut etre soumis.")
     report.status = DailyReport.SUBMITTED
     report.updated_by = user
     report.version += 1
@@ -22,6 +27,8 @@ def resolve_snag(snag: Snag, user) -> Snag:
 
 
 def validate_daily_report(report: DailyReport, user) -> DailyReport:
+    if report.status != DailyReport.SUBMITTED:
+        raise ValidationError("Le rapport doit etre soumis avant validation.")
     report.status = DailyReport.VALIDATED
     report.updated_by = user
     report.version += 1

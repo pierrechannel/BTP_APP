@@ -19,6 +19,7 @@ from apps.qhse.serializers import (
     PpspsSerializer,
 )
 from apps.qhse.services import close_incident, complete_action, complete_inspection
+from rest_framework.exceptions import ValidationError
 
 
 class IncidentViewSet(TenantModelViewSet):
@@ -65,6 +66,11 @@ class InspectionItemViewSet(TenantModelViewSet):
     queryset = InspectionItem.objects.select_related("inspection", "tenant")
     serializer_class = InspectionItemSerializer
     filterset_fields = ["inspection", "is_compliant"]
+
+    def perform_destroy(self, instance):
+        if instance.inspection.status == Inspection.COMPLETED:
+            raise ValidationError("Une inspection terminee ne peut plus etre modifiee.")
+        super().perform_destroy(instance)
 
 
 class PpspsViewSet(TenantModelViewSet):

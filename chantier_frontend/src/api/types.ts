@@ -14,6 +14,7 @@ export type Tenant = {
 };
 
 export type Membership = {
+  permissions: Record<string, string[]>;
   id: string;
   tenant: Tenant;
   role: string;
@@ -21,6 +22,7 @@ export type Membership = {
 };
 
 export type Me = {
+  is_superuser: boolean;
   id: number;
   email: string;
   username: string;

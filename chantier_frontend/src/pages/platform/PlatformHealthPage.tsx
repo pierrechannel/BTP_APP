@@ -1,48 +1,22 @@
-import { Box, Chip, Grid, Paper, Stack, Typography } from "@mui/material";
-import CheckCircleIcon from "@mui/icons-material/CheckCircle";
-import StorageIcon from "@mui/icons-material/Storage";
-import SyncIcon from "@mui/icons-material/Sync";
-import VpnKeyIcon from "@mui/icons-material/VpnKey";
-
-const checks = [
-  { label: "API Django", status: "A verifier via monitoring", icon: <CheckCircleIcon color="success" /> },
-  { label: "Base de donnees", status: "SQLite dev / PostgreSQL prod", icon: <StorageIcon color="primary" /> },
-  { label: "JWT Auth", status: "Actif", icon: <VpnKeyIcon color="secondary" /> },
-  { label: "Sync offline", status: "File mutations disponible", icon: <SyncIcon color="warning" /> },
-];
-
+import { Alert, Box, Button, Chip, Paper, Skeleton, Stack, Typography } from "@mui/material";
+import RefreshIcon from "@mui/icons-material/Refresh";
+import { usePlatformOverview } from "../../state/platform";
 export function PlatformHealthPage() {
-  return (
-    <Stack spacing={3}>
-      <Box>
-        <Typography variant="h4" sx={{ fontSize: { xs: 28, sm: 34 } }}>
-          Sante systeme
-        </Typography>
-        <Typography color="text.secondary">Vue d'exploitation pour suivre l'etat technique de la plateforme.</Typography>
-      </Box>
-
-      <Grid container spacing={2}>
-        {checks.map((check) => (
-          <Grid item xs={12} sm={6} lg={3} key={check.label}>
-            <Paper elevation={0} sx={{ p: 3, border: 1, borderColor: "divider", minHeight: 152 }}>
-              <Stack spacing={2}>
-                <Stack direction="row" justifyContent="space-between" spacing={2}>
-                  <Typography variant="h6">{check.label}</Typography>
-                  {check.icon}
-                </Stack>
-                <Chip label={check.status} variant="outlined" sx={{ alignSelf: "flex-start" }} />
-              </Stack>
-            </Paper>
-          </Grid>
-        ))}
-      </Grid>
-
-      <Paper elevation={0} sx={{ p: 3, border: 1, borderColor: "divider" }}>
-        <Typography variant="h6">Prochaine API a ajouter</Typography>
-        <Typography color="text.secondary" sx={{ mt: 1 }}>
-          Un endpoint backend dedie pourrait exposer uptime, version, migrations, stockage medias, file sync et erreurs recentes.
-        </Typography>
-      </Paper>
-    </Stack>
-  );
+  const { data, loading, error, refresh } = usePlatformOverview();
+  const cards = [
+    { label: "Connexion à la base", value: data ? "Disponible" : "Indisponible", detail: "Requête de contrôle exécutée par le serveur.", warning: false },
+    { label: "Synchronisation", value: data ? `${data.sync_pending} en attente` : "Indisponible", detail: data ? `${data.sync_failed} mutation(s) en échec` : "", warning: Boolean(data?.sync_failed) },
+    { label: "Génération de rapports", value: data ? `${data.reports_pending} en attente` : "Indisponible", detail: data ? `${data.reports_failed} rapport(s) en échec` : "", warning: Boolean(data?.reports_failed) },
+  ];
+  return <Stack spacing={3}><Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" gap={2}>
+    <Box><Typography variant="overline" color="primary.main">EXPLOITATION</Typography><Typography variant="h4">État du système</Typography><Typography color="text.secondary" mt={1}>État de la connexion et des files de traitement.</Typography></Box>
+    <Button variant="outlined" startIcon={<RefreshIcon />} onClick={refresh} disabled={loading} sx={{ alignSelf: "flex-start" }}>Vérifier maintenant</Button></Stack>
+    {error && <Alert severity="error">{error}</Alert>}
+    <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", md: "repeat(3, 1fr)" }, gap: 2 }}>
+      {cards.map((card) => <Paper key={card.label} variant="outlined" sx={{ p: 3 }}><Typography variant="h6" mb={2}>{card.label}</Typography>
+        {loading ? <Skeleton height={32} /> : <Chip label={card.value} color={!data ? "default" : card.warning ? "warning" : "success"} variant="outlined" />}
+        <Typography variant="body2" color="text.secondary" mt={2}>{card.detail}</Typography></Paper>)}
+    </Box>
+    {data && <Typography variant="caption" color="text.secondary">Dernière vérification : {new Intl.DateTimeFormat("fr-FR", { dateStyle: "long", timeStyle: "medium", timeZone: "Africa/Bujumbura" }).format(new Date(data.checked_at))}</Typography>}
+  </Stack>;
 }

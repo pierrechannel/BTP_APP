@@ -6,9 +6,11 @@ from apps.equipment.models import (
     MaintenanceRecord,
     UsageLog,
 )
+from rest_framework import serializers
 
 
 class EquipmentSerializer(TenantOwnedModelSerializer):
+    state = serializers.ChoiceField(choices=["operationnel", "maintenance", "en_panne", "hors_service"], default="operationnel")
     class Meta:
         model = Equipment
         fields = "__all__"

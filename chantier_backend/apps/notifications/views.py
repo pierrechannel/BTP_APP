@@ -18,6 +18,9 @@ class NotificationViewSet(TenantModelViewSet):
     filterset_fields = ["user", "read_at"]
     search_fields = ["title", "body"]
 
+    def get_queryset(self):
+        return super().get_queryset().filter(user=self.request.user)
+
     @action(detail=True, methods=["post"], url_path="mark-read")
     def mark_read(self, request, pk=None):
         notification = mark_notification_read(self.get_object(), request.user)

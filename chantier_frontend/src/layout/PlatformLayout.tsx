@@ -11,6 +11,8 @@ import {
   ListItemButton,
   ListItemIcon,
   ListItemText,
+  MenuItem,
+  Select,
   Stack,
   Toolbar,
   Typography,
@@ -23,6 +25,8 @@ import MenuIcon from "@mui/icons-material/Menu";
 
 import { platformMenu } from "../platform/platformResources";
 import { useAuth } from "../state/auth";
+import { fetchCollection } from "../api/workspace";
+import { ApiRecord } from "../api/types";
 
 const drawerWidth = 280;
 
@@ -31,13 +35,14 @@ export function PlatformLayout({ children }: { children: ReactNode }) {
   const theme = useTheme();
   const isDesktop = useMediaQuery(theme.breakpoints.up("md"));
   const [mobileOpen, setMobileOpen] = useState(false);
-  const { user, logout, refreshMe } = useAuth();
+  const { user, tenantId, setTenantId, logout } = useAuth();
+  const [tenants, setTenants] = useState<ApiRecord[]>([]);
 
   useEffect(() => {
-    if (!user) {
-      refreshMe().catch(() => logout());
-    }
-  }, [user, refreshMe, logout]);
+    const controller = new AbortController();
+    fetchCollection("/auth/tenants/", {}, controller.signal).then(setTenants).catch(() => {});
+    return () => controller.abort();
+  }, []);
 
   const drawerContent = (
     <Stack sx={{ height: "100%" }}>
@@ -49,7 +54,7 @@ export function PlatformLayout({ children }: { children: ReactNode }) {
       </Box>
       <Divider />
       <List sx={{ px: 1, flexGrow: 1, overflowY: "auto" }}>
-        {platformMenu.map((item) => (
+        {platformMenu.filter((item) => item.path !== "/platform/billing").map((item) => (
           <ListItemButton
             key={item.path}
             component={RouterLink}
@@ -98,6 +103,11 @@ export function PlatformLayout({ children }: { children: ReactNode }) {
               Gestion globale des tenants, utilisateurs et operations systeme
             </Typography>
           </Box>
+          <Select size="small" value={tenantId ?? ""} onChange={(event) => setTenantId(event.target.value)} displayEmpty
+            inputProps={{ "aria-label": "Entreprise à administrer" }} sx={{ maxWidth: { xs: 140, sm: 220 }, fontSize: 12 }}>
+            <MenuItem value="" disabled>Choisir une entreprise</MenuItem>
+            {tenants.map((tenant) => <MenuItem key={tenant.id} value={String(tenant.id)}>{String(tenant.name)}</MenuItem>)}
+          </Select>
           <Button
             component={RouterLink}
             to="/"
@@ -159,7 +169,7 @@ export function PlatformLayout({ children }: { children: ReactNode }) {
           maxWidth: "100vw",
         }}
       >
-        {children}
+        <Box key={tenantId}>{children}</Box>
       </Box>
     </Box>
   );

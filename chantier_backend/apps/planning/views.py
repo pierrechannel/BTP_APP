@@ -1,11 +1,10 @@
-from rest_framework import status
+from rest_framework import serializers
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from apps.common.viewsets import TenantModelViewSet
 from apps.planning.models import Task, TaskDependency
 from apps.planning.serializers import TaskDependencySerializer, TaskSerializer
-from apps.planning.services import update_task_progress
 
 
 class TaskViewSet(TenantModelViewSet):
@@ -18,15 +17,12 @@ class TaskViewSet(TenantModelViewSet):
     @action(detail=True, methods=["post"], url_path="update-progress")
     def update_progress(self, request, pk=None):
         task = self.get_object()
-        try:
-            progress = int(request.data.get("progress_percent"))
-            update_task_progress(task, progress, request.user)
-        except (TypeError, ValueError) as exc:
-            return Response(
-                {"code": "invalid_progress", "message": str(exc), "details": {}},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        return Response(self.get_serializer(task).data)
+        field = serializers.IntegerField(min_value=0, max_value=100)
+        progress = field.run_validation(request.data.get("progress_percent"))
+        serializer = self.get_serializer(task, data={"progress_percent": progress}, partial=True)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        return Response(serializer.data)
 
 
 class TaskDependencyViewSet(TenantModelViewSet):

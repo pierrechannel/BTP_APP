@@ -9,6 +9,9 @@ media/
 .mypy_cache/
 .coverage
 htmlcov/
+.test-media/
+.local-backups/
+.local-run/
 chantier_frontend/node_modules
 chantier_frontend/dist
 chantier_frontend/node_modules.partial

@@ -1,3 +1,5 @@
+from uuid import UUID
+
 from rest_framework.permissions import BasePermission
 
 
@@ -5,7 +7,11 @@ class HasTenantContext(BasePermission):
     message = "Aucun tenant courant n'a ete fourni."
 
     def has_permission(self, request, view):
-        return bool(getattr(request, "tenant_id", None))
+        try:
+            UUID(str(getattr(request, "tenant_id", "")))
+            return True
+        except (ValueError, TypeError):
+            return False
 
 
 class TenantObjectPermission(BasePermission):
@@ -24,10 +30,12 @@ class IsTenantMember(BasePermission):
         user = getattr(request, "user", None)
         if not tenant_id or not user or not user.is_authenticated:
             return False
+        from apps.accounts.models import Membership, Tenant
+
+        if not Tenant.objects.filter(pk=tenant_id, is_active=True).exists():
+            return False
         if user.is_superuser:
             return True
-
-        from apps.accounts.models import Membership
 
         return Membership.objects.filter(user=user, tenant_id=tenant_id, is_active=True).exists()
 
@@ -65,9 +73,6 @@ class HasRolePermission(BasePermission):
             return False
 
         permissions = membership.role.permissions or {}
-        if "*" in permissions:
-            return True
-
         resource = getattr(view, "resource_name", None)
         if resource is None:
             model = getattr(getattr(view, "queryset", None), "model", None)
@@ -75,10 +80,15 @@ class HasRolePermission(BasePermission):
         if resource is None:
             return False
 
-        action = getattr(view, "action", None) or SAFE_METHOD_ACTION.get(request.method)
+        view_action = getattr(view, "action", None)
+        action = getattr(view, "permission_action_map", {}).get(view_action, view_action)
+        action = action or SAFE_METHOD_ACTION.get(request.method)
         action = self.normalize_action(action, request.method)
-        allowed = set(permissions.get(resource, []))
-        return action in allowed or "crud" in allowed
+        allowed = set(permissions.get(resource, [])) | set(permissions.get("*", []))
+        if action == "metadata":
+            return bool(allowed & {"read", "read_shared", "create", "update", "crud"})
+        return (action in allowed or ("crud" in allowed and action in {"create", "read", "update", "delete"})
+                or (resource == "documents" and action == "read" and "read_shared" in allowed))
 
     def normalize_action(self, action, method):
         if action == "list" or action == "retrieve":

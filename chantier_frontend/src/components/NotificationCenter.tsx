@@ -1,73 +1,40 @@
 import { useEffect, useState } from "react";
-import {
-  Badge,
-  Box,
-  Divider,
-  IconButton,
-  List,
-  ListItemText,
-  Menu,
-  MenuItem,
-  Typography,
-} from "@mui/material";
-import NotificationsIcon from "@mui/icons-material/Notifications";
-
+import { Alert, Badge, Box, Button, Divider, IconButton, ListItemText, Menu, MenuItem, Typography } from "@mui/material";
+import NotificationsOutlinedIcon from "@mui/icons-material/NotificationsOutlined";
+import { Link as RouterLink } from "react-router-dom";
 import { api } from "../api/client";
-import { ApiRecord, Paginated } from "../api/types";
-
+import { ApiRecord } from "../api/types";
+import { errorMessage, fetchCollection, versionHeaders } from "../api/workspace";
+import { useWorkspace } from "../state/workspace";
 export function NotificationCenter() {
-  const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
-  const [notifications, setNotifications] = useState<ApiRecord[]>([]);
-
-  const load = () => {
-    api
-      .get<Paginated<ApiRecord>>("/notifications/notifications/")
-      .then((response) => setNotifications(response.data.results))
-      .catch(() => setNotifications([]));
-  };
-
+  const { can } = useWorkspace();
+  const [anchor, setAnchor] = useState<HTMLElement | null>(null);
+  const [records, setRecords] = useState<ApiRecord[]>([]);
+  const [error, setError] = useState("");
   useEffect(() => {
-    load();
-  }, []);
-
-  const unreadCount = notifications.filter((item) => !item.read_at).length;
-
-  return (
-    <>
-      <IconButton onClick={(event) => setAnchorEl(event.currentTarget)} aria-label="Notifications">
-        <Badge badgeContent={unreadCount} color="error">
-          <NotificationsIcon />
-        </Badge>
-      </IconButton>
-      <Menu
-        anchorEl={anchorEl}
-        open={Boolean(anchorEl)}
-        onClose={() => setAnchorEl(null)}
-        PaperProps={{ sx: { width: { xs: 320, sm: 420 }, maxWidth: "calc(100vw - 24px)" } }}
-      >
-        <Box sx={{ px: 2, py: 1.5 }}>
-          <Typography variant="subtitle1" fontWeight={700}>
-            Notifications
-          </Typography>
-        </Box>
-        <Divider />
-        <List dense disablePadding sx={{ maxHeight: 360, overflowY: "auto" }}>
-          {notifications.length === 0 && (
-            <MenuItem disabled>
-              <ListItemText primary="Aucune notification" />
-            </MenuItem>
-          )}
-          {notifications.slice(0, 8).map((notification) => (
-            <MenuItem key={String(notification.id)} onClick={() => setAnchorEl(null)}>
-              <ListItemText
-                primary={String(notification.title ?? "Notification")}
-                secondary={String(notification.body ?? "")}
-                primaryTypographyProps={{ fontWeight: notification.read_at ? 500 : 800 }}
-              />
-            </MenuItem>
-          ))}
-        </List>
-      </Menu>
-    </>
-  );
+    if (!can("notifications")) return;
+    const controller = new AbortController();
+    fetchCollection("/notifications/notifications/", {}, controller.signal).then(setRecords)
+      .catch((error) => { if (!controller.signal.aborted) setError(errorMessage(error)); });
+    return () => controller.abort();
+  }, [anchor, can]);
+  if (!can("notifications")) return null;
+  const markRead = async (record: ApiRecord) => {
+    if (record.read_at || !can("notifications", "update")) return;
+    try {
+      const { data } = await api.post(`/notifications/notifications/${record.id}/mark-read/`, {}, { headers: versionHeaders(record) });
+      setRecords((rows) => rows.map((row) => row.id === record.id ? data : row)); setError("");
+    } catch (error) { setError(errorMessage(error)); }
+  };
+  return <><IconButton aria-label="Notifications" onClick={(event) => setAnchor(event.currentTarget)}><Badge badgeContent={records.filter((record) => !record.read_at).length} max={99} color="error"><NotificationsOutlinedIcon /></Badge></IconButton>
+    <Menu anchorEl={anchor} open={Boolean(anchor)} onClose={() => setAnchor(null)} PaperProps={{ sx: { width: 370, maxWidth: "calc(100vw - 24px)" } }}>
+      <Box px={2} py={1.5}><Typography fontWeight={700}>Notifications</Typography></Box><Divider />
+      {error && <Alert severity="error">{error}</Alert>}
+      {!records.length && <Typography color="text.secondary" p={3}>Vous êtes à jour.</Typography>}
+      {records.slice(0, 8).map((record) => <MenuItem key={record.id} onClick={() => markRead(record)} sx={{ py: 1.5, whiteSpace: "normal" }}>
+        <Box sx={{ width: 6, height: 6, borderRadius: "50%", bgcolor: record.read_at ? "transparent" : "secondary.main", mr: 1.5 }} />
+        <ListItemText primary={String(record.title)} secondary={String(record.body ?? "")} primaryTypographyProps={{ fontWeight: record.read_at ? 400 : 600, fontSize: 13 }} />
+      </MenuItem>)}
+      <Box p={1}><Button component={RouterLink} to="/notifications" fullWidth onClick={() => setAnchor(null)}>Toutes les notifications</Button></Box>
+    </Menu></>;
 }

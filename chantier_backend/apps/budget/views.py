@@ -10,7 +10,7 @@ from apps.budget.serializers import (
     ExpenseSerializer,
     InvoiceSerializer,
 )
-from apps.budget.services import get_budget_summary, validate_expense
+from apps.budget.services import get_budget_summary, validate_expense, transition_invoice
 from apps.common.viewsets import TenantModelViewSet
 
 
@@ -48,6 +48,14 @@ class InvoiceViewSet(TenantModelViewSet):
     serializer_class = InvoiceSerializer
     filterset_fields = ["project", "status", "currency", "issue_date"]
     search_fields = ["invoice_number", "supplier_name"]
+
+    @action(detail=True, methods=["post"])
+    def validate(self, request, pk=None):
+        return Response(self.get_serializer(transition_invoice(self.get_object(), Invoice.VALIDATED, request.user)).data)
+
+    @action(detail=True, methods=["post"])
+    def pay(self, request, pk=None):
+        return Response(self.get_serializer(transition_invoice(self.get_object(), Invoice.PAID, request.user)).data)
 
 
 class AmendmentViewSet(TenantModelViewSet):

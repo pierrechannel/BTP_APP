@@ -31,6 +31,12 @@ class DocumentVersion(TenantOwnedModel):
     checksum = models.CharField(max_length=128, blank=True)
     is_current = models.BooleanField(default=True)
 
+    class Meta:
+        constraints = [models.UniqueConstraint(
+            fields=["document"], condition=models.Q(is_current=True, deleted_at__isnull=True),
+            name="one_current_document_version",
+        )]
+
 
 class DocumentAcl(TenantOwnedModel):
     READ = "read"

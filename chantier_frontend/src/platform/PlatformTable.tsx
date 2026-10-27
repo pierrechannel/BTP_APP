@@ -12,8 +12,8 @@ import {
 } from "@mui/x-data-grid";
 import RefreshIcon from "@mui/icons-material/Refresh";
 
-import { api } from "../api/client";
-import { ApiRecord, Paginated } from "../api/types";
+import { ApiRecord } from "../api/types";
+import { fetchCollection, fieldLabel, errorMessage } from "../api/workspace";
 
 export function PlatformTable({
   title,
@@ -34,10 +34,9 @@ export function PlatformTable({
     setLoading(true);
     setError("");
     try {
-      const response = await api.get<Paginated<ApiRecord>>(endpoint);
-      setRecords(response.data.results);
-    } catch {
-      setError(`Impossible de charger ${title}.`);
+      setRecords(await fetchCollection(endpoint));
+    } catch (error) {
+      setError(errorMessage(error));
     } finally {
       setLoading(false);
     }
@@ -51,7 +50,7 @@ export function PlatformTable({
     () =>
       columns.map((column, index) => ({
         field: column,
-        headerName: column,
+        headerName: fieldLabel(column),
         flex: index === 0 ? 1.2 : 1,
         minWidth: 150,
         valueGetter: (_value, row) => row[column],
