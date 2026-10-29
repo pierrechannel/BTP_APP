@@ -18,6 +18,7 @@ from apps.resources.serializers import (
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from apps.resources.stock import stock_at
+from apps.resources.services import transition_purchase_order
 
 
 class MaterialViewSet(TenantModelViewSet):
@@ -48,6 +49,11 @@ class PurchaseOrderViewSet(TenantModelViewSet):
     serializer_class = PurchaseOrderSerializer
     filterset_fields = ["project", "supplier", "status", "ordered_at"]
     search_fields = ["order_number", "supplier__name"]
+
+    @action(detail=True, methods=["post"], url_path="transition-status")
+    def transition_status(self, request, pk=None):
+        order = transition_purchase_order(self.get_object(), request.data.get("to_status"), request.user)
+        return Response(self.get_serializer(order).data)
 
 
 class PurchaseOrderLineViewSet(TenantModelViewSet):

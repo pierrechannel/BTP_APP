@@ -13,7 +13,7 @@ class VersionConflict(APIException):
 
 
 class VersionedWriteMixin:
-    """Lock the tenant row for every API write, including custom actions.
+    """Lock tenant writes only after authentication and view permissions pass.
 
     If-Match is optional for legacy clients. When supplied, stale writes fail.
     Serializing tenant writes also protects graph validation on PostgreSQL.
@@ -28,11 +28,20 @@ class VersionedWriteMixin:
         except (ValueError, TypeError):
             return super().dispatch(request, *args, **kwargs)
         with transaction.atomic():
-            Tenant.objects.select_for_update().filter(pk=tenant_id).first()
             response = super().dispatch(request, *args, **kwargs)
             if response.status_code >= 400:
                 transaction.set_rollback(True)
             return response
+
+    def initial(self, request, *args, **kwargs):
+        super().initial(request, *args, **kwargs)
+        if request.method in {"POST", "PUT", "PATCH", "DELETE"}:
+            tenant_id = getattr(request, "tenant_id", None)
+            try:
+                UUID(str(tenant_id))
+            except (ValueError, TypeError):
+                return
+            Tenant.objects.select_for_update().filter(pk=tenant_id).first()
 
     def get_object(self):
         obj = super().get_object()

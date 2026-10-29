@@ -8,7 +8,7 @@ export type FieldInfo = {
   related_model?: string; default?: unknown; multiline?: boolean;
   max_length?: number; min_value?: number; max_value?: number;
 };
-export type Metadata = { fields?: Record<string, FieldInfo>; actions?: { POST?: Record<string, FieldInfo>; PUT?: Record<string, FieldInfo> } };
+export type Metadata = { fields?: Record<string, FieldInfo>; filters?: string[]; search_fields?: string[]; ordering_fields?: string[]; actions?: { POST?: Record<string, FieldInfo>; PUT?: Record<string, FieldInfo> } };
 
 export function pageEndpoint(next: string) {
   const base = new URL(api.defaults.baseURL ?? "/api/v1", window.location.origin);
@@ -47,6 +47,7 @@ export function errorMessage(error: unknown): string {
 }
 
 const labels: Record<string, string> = {
+  project_name: "Chantier", lot_name: "Lot", spent: "Consommé TTC", remaining: "Disponible", material_name: "Matériau", order_status: "Statut de la commande",
   name: "Nom", title: "Titre", code: "Code", reference: "Référence", description: "Description", status: "Statut",
   project: "Chantier", lot: "Lot", parent: "Élément parent", client_name: "Maître d’ouvrage", address: "Adresse",
   planned_start_date: "Début prévu", planned_end_date: "Fin prévue", work_type: "Type de travaux", contract_amount: "Montant du marché",
@@ -73,6 +74,12 @@ const labels: Record<string, string> = {
   material: "Matériau", source_location: "Dépôt de départ", target_location: "Dépôt de destination", movement_type: "Type de mouvement",
   movement_date: "Date du mouvement", order_number: "N° de commande", ordered_at: "Commandée le", purchase_order: "Commande",
   invoice_number: "N° de facture", issue_date: "Date d’émission", country: "Pays", latitude: "Latitude", longitude: "Longitude",
+  certification: "Habilitation", issued_at: "Délivrée le", expires_at: "Expire le", usage_date: "Date d’utilisation", hours: "Heures d’utilisation", counter_value: "Compteur",
+  image: "Photo", taken_at: "Prise le", update_date: "Date du relevé", snapshot_date: "Date de mesure", value: "Valeur", metadata: "Informations complémentaires",
+  permission: "Niveau d’accès", permissions: "Autorisations", event_type: "Type d’événement", email_enabled: "E-mail", push_enabled: "Notification push", in_app_enabled: "Dans l’application",
+  sender: "Expéditeur", base_currency: "Devise source", target_currency: "Devise cible", rate: "Taux", rate_date: "Date du taux", source: "Source", approved_at: "Approuvé le",
+  is_active: "Actif", username: "Identifiant", language: "Langue", timezone: "Fuseau horaire", preferred_currency: "Devise préférée", platform: "Plateforme", push_token: "Jeton de notification", last_seen_at: "Dernière connexion",
+  action: "Action", user_agent: "Navigateur", ip_address: "Adresse IP", correlation_id: "Référence de suivi",
 };
 export const fieldLabel = (name: string) => labels[name] ?? name.replaceAll("_", " ");
 export const statusLabels: Record<string, string> = {
@@ -82,17 +89,39 @@ export const statusLabels: Record<string, string> = {
   completed: "Terminé", failed: "En échec", applied: "Appliqué", declared: "Déclaré", actions: "Actions en cours", open: "Ouvert", resolved: "Résolu",
   operationnel: "Opérationnel", maintenance: "En maintenance", en_panne: "En panne", hors_service: "Hors service",
   create: "Création", update: "Modification", upsert: "Création ou modification", delete: "Suppression", in: "Entrée", out: "Sortie", transfer: "Transfert",
+  sent: "Envoyée", partially_received: "Réception partielle", received: "Réceptionnée", adjustment: "Ajustement", analysis: "En analyse",
+  read: "Consultation", write: "Modification", approve: "Approbation",
 };
 export const recordTitle = (row: Record<string, unknown>) => String(row.name ?? row.title ?? row.label ?? row.original_name
-  ?? ([row.first_name, row.last_name].filter(Boolean).join(" ") || row.code || row.reference || row.order_number || row.invoice_number || row.email || row.id));
+  ?? ([row.first_name, row.last_name].filter(Boolean).join(" ") || row.code || row.reference || row.order_number || row.invoice_number || row.email
+    || (row.project_name ? `Budget · ${row.project_name}` : "")
+    || (row.material_name ? `Ligne · ${row.material_name}` : "")
+    || (row.work_date ? `Pointage du ${formatValue(row.work_date, "work_date")}` : "")
+    || (row.report_date ? `Journal du ${formatValue(row.report_date, "report_date")}` : "")
+    || (row.usage_date ? `Utilisation du ${formatValue(row.usage_date, "usage_date")}` : "")
+    || (row.inspection_date ? `Inspection du ${formatValue(row.inspection_date, "inspection_date")}` : "")
+    || (row.update_date ? `Avancement du ${formatValue(row.update_date, "update_date")}` : "")
+    || (row.version_label ? `Version ${row.version_label}` : "") || row.event_type
+    || (row.start_date ? `Affectation du ${formatValue(row.start_date, "start_date")}` : "")
+    || (row.certification ? "Habilitation du personnel" : "") || (row.reviewer ? "Demande d’approbation" : "")
+    || (row.material ? "Ligne de commande" : "") || (row.template ? `Rapport du ${formatValue(row.created_at, "created_at")}` : "")
+    || (row.body ? String(row.body).slice(0, 80) : "") || "Fiche associée"));
 export function formatValue(value: unknown, field = ""): string {
   if (value === null || value === undefined || value === "") return "—";
   if (typeof value === "boolean") return value ? "Oui" : "Non";
   if (field === "size") return `${(Number(value) / 1024).toLocaleString("fr-FR", { maximumFractionDigits: 1 })} Ko`;
   if (field === "progress_percent") return `${value} %`;
   if (["status", "state", "operation", "movement_type"].includes(field)) return statusLabels[String(value)] ?? String(value);
-  if (/date|_at$/.test(field) && !Number.isNaN(Date.parse(String(value)))) return new Intl.DateTimeFormat("fr-FR").format(new Date(String(value)));
-  if (/amount|cost|price|rate|hours/.test(field) && Number.isFinite(Number(value))) return Number(value).toLocaleString("fr-FR", { maximumFractionDigits: 2 });
+  if (/date|_at$/.test(field) && !Number.isNaN(Date.parse(String(value)))) return new Intl.DateTimeFormat("fr-FR", /^\d{4}-\d{2}-\d{2}$/.test(String(value)) ? { timeZone: "UTC" } : {}).format(new Date(String(value)));
+  if (/amount|cost|price|rate|hours|quantity|counter_value/.test(field) && Number.isFinite(Number(value))) {
+    const match = /^(-?)(\d+)(?:\.(\d+))?$/.exec(String(value));
+    if (match) {
+      const precision = field === "rate" ? 8 : field === "quantity" ? 3 : 2;
+      const fraction = (match[3] ?? "").slice(0, precision).replace(/0+$/, "");
+      return `${match[1]}${BigInt(match[2]).toLocaleString("fr-FR")}${fraction ? `,${fraction}` : ""}`;
+    }
+    return Number(value).toLocaleString("fr-FR", { maximumFractionDigits: 2 });
+  }
   if (typeof value === "object") return JSON.stringify(value, null, 2);
   return String(value);
 }

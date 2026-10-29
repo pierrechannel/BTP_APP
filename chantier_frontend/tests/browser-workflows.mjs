@@ -1,0 +1,163 @@
+// Optional local integration suite: seeded Django :8005, Vite :5175 and headless
+// Chrome with remote debugging on :9222 must already be running.
+import { mkdir, writeFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
+const artifacts = fileURLToPath(new URL('../../.local-run/', import.meta.url));
+await mkdir(artifacts, { recursive: true });
+const tab = await fetch('http://127.0.0.1:9222/json/new?http://127.0.0.1:5175', { method: 'PUT' }).then(r => r.json());
+const socket = new WebSocket(tab.webSocketDebuggerUrl);
+await new Promise((resolve, reject) => { socket.addEventListener('open', resolve, { once: true }); socket.addEventListener('error', reject, { once: true }); });
+let counter = 0;
+const pending = new Map();
+const errors = [];
+socket.addEventListener('message', ({ data }) => {
+  const message = JSON.parse(data);
+  if (message.id) { const task = pending.get(message.id); pending.delete(message.id); if (message.error) task?.reject(new Error(JSON.stringify(message.error))); else task?.resolve(message.result); }
+  if (message.method === 'Runtime.exceptionThrown') errors.push(message.params.exceptionDetails.exception?.description ?? message.params.exceptionDetails.text);
+});
+const call = (method, params = {}) => new Promise((resolve, reject) => { const id = ++counter; pending.set(id, { resolve, reject }); socket.send(JSON.stringify({ id, method, params })); });
+const evaluate = async expression => { const value = await call('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true }); if (value.exceptionDetails) throw new Error(value.exceptionDetails.exception?.description ?? value.exceptionDetails.text); return value.result.value; };
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+const waitFor = async (expression, label) => {
+  for (let count = 0; count < 100; count++) { if (await evaluate(`Boolean(${expression})`)) return; await sleep(200); }
+  throw new Error('Timeout: ' + label + '\n' + await evaluate('document.body.innerText'));
+};
+const click = text => evaluate(`(() => { const e = [...document.querySelectorAll('button,a')].find(e => e.textContent.trim() === ${JSON.stringify(text)}); if (!e) throw new Error('Missing button: '+${JSON.stringify(text)}); e.click(); })()`);
+const fill = async (label, value) => {
+  await waitFor(`[...document.querySelectorAll('label')].some(e => e.textContent.replace('*','').trim() === ${JSON.stringify(label)})`, 'field ' + label);
+  return evaluate(`(() => { const l = [...document.querySelectorAll('label')].find(e => e.textContent.replace('*','').trim() === ${JSON.stringify(label)}); if (!l) throw new Error('Missing field: '+${JSON.stringify(label)}); const e = document.getElementById(l.htmlFor); e.focus(); Object.getOwnPropertyDescriptor(e.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype, 'value').set.call(e, ${JSON.stringify(value)}); e.dispatchEvent(new Event('input',{bubbles:true})); e.dispatchEvent(new Event('change',{bubbles:true})); })()`);
+};
+const select = async (label, value) => { await fill(label, value); await waitFor("document.querySelector('[role=option]')", label + ' options'); await evaluate(`(() => { const e = [...document.querySelectorAll('[role=option]')].find(e => e.textContent.trim() === ${JSON.stringify(value)}); if (!e) throw new Error('Option unavailable'); e.click(); })()`); };
+const shot = async name => { await sleep(400); const { data } = await call('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false }); await writeFile(`${artifacts}/${name}.png`, Buffer.from(data, 'base64')); };
+const api = (path, method = 'GET') => evaluate(`fetch('/api/v1${path}',{method:${JSON.stringify(method)},headers:{Authorization:'Bearer '+localStorage.getItem('chantier.accessToken'),'X-Tenant-ID':localStorage.getItem('chantier.tenantId')}}).then(async r => ({status:r.status,data:r.status===204?null:await r.json()}))`);
+let orderId;
+let photoId;
+let roleId;
+try {
+  await call('Page.enable'); await call('Runtime.enable');
+  await call('Emulation.setDeviceMetricsOverride', { width: 1440, height: 1050, deviceScaleFactor: 1, mobile: false });
+  await call('Page.navigate', { url: 'http://127.0.0.1:5175' });
+  await waitFor("document.querySelector('button[type=submit]') || document.body.innerText.includes('Bonjour')", 'application');
+  if (await evaluate("Boolean(document.querySelector('button[type=submit]'))")) await click('Se connecter');
+  await waitFor("document.body.innerText.includes('Bonjour')", 'login');
+  const projects = (await api('/projects/')).data.results;
+  const suppliers = (await api('/resources/suppliers/')).data.results;
+  const materials = (await api('/resources/materials/')).data.results;
+  if (!projects.length || !suppliers.length || !materials.length) throw new Error('Missing seeded fixtures');
+  const tasks = (await api('/planning/tasks/')).data.results;
+  const detailProject = projects.find(project => project.id === tasks[0]?.project) ?? projects[0];
+  await call('Page.navigate', { url: 'http://127.0.0.1:5175/projects/' + detailProject.id });
+  await waitFor("document.querySelector('#detail-tab-tracking')", 'detail page tabs');
+  await click('Traçabilité');
+  await waitFor("!document.querySelector('#detail-tracking').hidden && document.body.innerText.includes('Suivi de la fiche')", 'record tracking');
+  await click('Données associées');
+  await waitFor("document.querySelector('#detail-related .MuiDataGrid-root') || document.querySelector('#detail-related')?.textContent.includes('Aucun élément associé')", 'related detail records');
+  if (tasks.length) {
+    await evaluate("[...document.querySelectorAll('#detail-related [role=tab]')].find(e => e.textContent==='Planning').click()");
+    await waitFor("document.querySelector('#detail-related .MuiDataGrid-row')", 'related records datatable');
+  }
+  await shot('project-detail-related');
+  await evaluate("document.querySelector('#detail-tab-overview').click()");
+  await waitFor("document.querySelector('[aria-label=\"Informations générales\"]')", 'grouped detail information');
+  await shot('project-detail-overview');
+  await call('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
+  await shot('project-detail-mobile');
+  if (await evaluate('document.documentElement.scrollWidth > innerWidth')) throw new Error('Mobile detail page overflows');
+  await call('Emulation.setDeviceMetricsOverride', { width: 1440, height: 1050, deviceScaleFactor: 1, mobile: false });
+  await call('Page.navigate', { url: 'http://127.0.0.1:5175/resources/orders' });
+  await waitFor("document.body.innerText.includes('Créer · bon de commande')", 'orders');
+  await click('Créer · bon de commande');
+  await waitFor("[...document.querySelectorAll('[role=dialog] label')].some(e => e.textContent.replace('*','').trim()==='N° de commande')", 'order editor');
+  const orderNumber = `QA-UX-${Date.now()}`;
+  await fill('N° de commande', orderNumber);
+  await select('Chantier', projects[0].name);
+  await select('Fournisseur', suppliers[0].name);
+  await click('Récapitulatif');
+  await waitFor("document.querySelector('#record-form-review')?.textContent.includes('QA-UX-')", 'form summary tab');
+  await click('Enregistrer');
+  await waitFor("location.pathname.startsWith('/resources/orders/') && document.body.innerText.includes('Ajouter une ligne')", 'order detail');
+  orderId = await evaluate('location.pathname.split("/").at(-1)');
+  await click('Ajouter une ligne');
+  await waitFor("document.body.innerText.includes('Prix unitaire') && !document.querySelector('[role=progressbar]')", 'line editor');
+  await select('Matériau', materials[0].name);
+  await fill('Quantité', '2.500'); await fill('Prix unitaire', '100.50'); await fill('Devise', 'BIF');
+  await waitFor("document.body.innerText.includes('251,25')", 'live line total');
+  if (await evaluate("[...document.querySelectorAll('[role=dialog] label')].some(e=>e.textContent==='Commande')")) throw new Error('Order context should be fixed');
+  await click('Enregistrer');
+  await waitFor("!document.querySelector('[role=dialog]') && document.body.innerText.includes('251,25')", 'line saved');
+  await evaluate("[...document.querySelectorAll('button[aria-label]')].find(e => e.getAttribute('aria-label')==='Modifier la ligne').click()");
+  await waitFor("document.querySelector('[role=dialog]') && document.body.innerText.includes('Total de la ligne')", 'edit saved line');
+  await fill('Quantité', '3'); await click('Enregistrer');
+  await waitFor("!document.querySelector('[role=dialog]') && document.body.innerText.includes('301,5')", 'updated order total');
+  await click('Ajouter une ligne');
+  await waitFor("document.querySelector('[role=dialog]') && !document.querySelector('[role=progressbar]')", 'second line');
+  await select('Matériau', materials[0].name);
+  await fill('Quantité', '1'); await fill('Prix unitaire', '10'); await fill('Devise', 'USD'); await click('Enregistrer');
+  await waitFor("!document.querySelector('[role=dialog]') && document.body.innerText.includes('Total des lignes · USD')", 'separate currency totals');
+  await shot('orders-desktop');
+  await call('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
+  await shot('orders-mobile');
+  if (await evaluate('document.documentElement.scrollWidth > innerWidth')) throw new Error('Mobile order page overflows');
+  await click('Ajouter une ligne');
+  await waitFor("document.querySelector('[role=dialog]') && !document.querySelector('[role=progressbar]')", 'mobile line editor');
+  await shot('order-line-mobile');
+  if (await evaluate('document.documentElement.scrollWidth > innerWidth')) throw new Error('Mobile editor overflows');
+  await click('Annuler');
+  await call('Emulation.setDeviceMetricsOverride', { width: 1440, height: 1050, deviceScaleFactor: 1, mobile: false });
+  const routes = ['/budget/amendments','/budget/exchange-rates','/workforce/worker-certifications','/equipment/usage','/progress/photos','/progress/updates','/qhse/ppsps','/documents/sharing','/notifications/messages','/notifications/channels','/notifications/preferences','/reports/indicators','/administration','/administration/memberships','/administration/users','/administration/audit','/administration/devices'];
+  for (const route of routes) {
+    await call('Page.navigate', { url: 'http://127.0.0.1:5175' + route });
+    await waitFor("document.querySelector('h4') && !document.querySelector('.MuiSkeleton-root') && !document.querySelector('[role=progressbar]')", route);
+    if (await evaluate("[...document.querySelectorAll('[role=alert]')].some(e => e.className.includes('Error') || e.textContent.includes('injoignable'))")) throw new Error('Route failed: ' + route);
+  }
+  await call('Page.navigate', { url: 'http://127.0.0.1:5175/resources/orders' });
+  await waitFor("document.body.innerText.includes('Filtres')", 'backend-supported filters');
+  await click('Filtres');
+  await waitFor("document.querySelector('label') && [...document.querySelectorAll('label')].some(e=>e.textContent==='Fournisseur')", 'supplier filter');
+  await select('Fournisseur', suppliers[0].name);
+  await waitFor("document.body.innerText.includes('Filtres (1)')", 'filter applied');
+  await waitFor("document.querySelector('.MuiDataGrid-row button[aria-label^=\"Voir \"]')", 'datatable row actions');
+  await evaluate("document.querySelector('.MuiDataGrid-row button[aria-label^=\"Voir \"]').click()");
+  await waitFor("document.querySelector('#quick-record-title')", 'quick detail modal');
+  const headerColor = await evaluate("getComputedStyle(document.querySelector('#quick-record-title')).backgroundColor");
+  if (headerColor !== 'rgb(16, 61, 36)') throw new Error('Modal header does not match reference');
+  await shot('reference-detail-modal');
+  await click('Fermer');
+  await call('Page.navigate', { url: 'http://127.0.0.1:5175/resources/movements' });
+  await waitFor("document.body.innerText.includes('Créer · mouvement')", 'stock movements');
+  await click('Créer · mouvement');
+  await waitFor("[...document.querySelectorAll('[role=dialog] label')].some(e=>e.textContent.replace('*','').trim()==='Type de mouvement')", 'movement editor');
+  await evaluate("(() => { const label=[...document.querySelectorAll('label')].find(e=>e.textContent.replace('*','').trim()==='Type de mouvement'); document.getElementById(label.htmlFor).dispatchEvent(new MouseEvent('mousedown',{bubbles:true,button:0})); })()");
+  await waitFor("document.querySelector('[role=option]')", 'movement choices');
+  await evaluate("[...document.querySelectorAll('[role=option]')].find(e=>e.textContent==='Sortie').click()");
+  await waitFor("document.body.innerText.includes('Dépôt de départ')", 'source depot');
+  if (await evaluate("[...document.querySelectorAll('[role=dialog] label')].some(e=>e.textContent.includes('destination'))")) throw new Error('Outgoing movement must not request destination');
+  await click('Annuler');
+  await call('Page.navigate', { url: 'http://127.0.0.1:5175/administration' });
+  await waitFor("document.body.innerText.includes('Créer · rôle')", 'roles'); await click('Créer · rôle');
+  await fill('Nom', 'QA UI role'); const roleCode='qa-ui-'+Date.now(); await fill('Code', roleCode);
+  await waitFor("document.querySelector('input[aria-label=\"Chantiers : Consulter\"]')", 'role matrix');
+  await evaluate("document.querySelector('input[aria-label=\"Chantiers : Consulter\"]').click()");
+  await click('Enregistrer'); await waitFor("!document.querySelector('[role=dialog]')", 'role saved');
+  const role=(await api('/auth/roles/')).data.results.find(row=>row.code===roleCode); roleId=role?.id;
+  if (!role || !role.permissions.projects.includes('read') || role.permissions.projects.includes('validate')) throw new Error('Role matrix did not preserve selected permissions');
+  await call('Page.navigate', { url: 'http://127.0.0.1:5175/progress/photos' });
+  await waitFor("document.body.innerText.includes('Créer · photo')", 'photos'); await click('Créer · photo');
+  await waitFor("document.querySelector('input[type=file]')", 'photo upload form');
+  await select('Chantier', projects[0].name);
+  const photoName='qa-ui-'+Date.now()+'.png';
+  await evaluate(`(async () => { const canvas=document.createElement('canvas'); canvas.width=20; canvas.height=20; canvas.getContext('2d').fillRect(0,0,20,20); const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/png')); const transfer=new DataTransfer(); transfer.items.add(new File([blob],${JSON.stringify(photoName)},{type:'image/png'})); const input=document.querySelector('input[type=file]'); input.files=transfer.files; input.dispatchEvent(new Event('change',{bubbles:true})); })()`);
+  await click('Enregistrer'); await waitFor("!document.querySelector('[role=dialog]')", 'photo saved');
+  const photo=(await api('/progress/photos/')).data.results.find(row=>row.image.includes(photoName)); photoId=photo?.id;
+  if (!photoId) throw new Error('Photo was not uploaded');
+  await call('Page.navigate', { url: 'http://127.0.0.1:5175/progress/photos/'+photoId });
+  await waitFor("document.querySelector('img[alt=\"Photo du chantier\"]')?.naturalWidth===20", 'authenticated photo preview');
+  if (errors.length) throw new Error(errors.join('\n'));
+  console.log(JSON.stringify({ orderCreatedThroughUI: true, lineCreatedEdited: true, exactTotals: true, currenciesSeparated: true, mobileOverflow: false, missingRoutesChecked: routes.length, supplierFilter: true, stockFields: true, roleMatrixSaved: true, photoUploadAndAuthenticatedPreview: true, consoleErrors: errors }, null, 2));
+} catch (error) { await shot('workflows-failure'); console.error('Console errors:', JSON.stringify(errors)); throw error; }
+finally {
+  if (orderId) await api('/resources/purchase-orders/' + orderId + '/', 'DELETE');
+  if (photoId) await api('/progress/photos/' + photoId + '/', 'DELETE');
+  if (roleId) await api('/auth/roles/' + roleId + '/', 'DELETE');
+  socket.close();
+}

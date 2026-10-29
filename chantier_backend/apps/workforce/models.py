@@ -1,3 +1,6 @@
+from decimal import Decimal
+
+from django.core.validators import MinValueValidator
 from django.db import models
 
 from apps.common.models import TenantOwnedModel
@@ -7,8 +10,19 @@ class Worker(TenantOwnedModel):
     first_name = models.CharField(max_length=120)
     last_name = models.CharField(max_length=120)
     job_title = models.CharField(max_length=120, blank=True)
-    hourly_rate = models.DecimalField(max_digits=18, decimal_places=2, null=True, blank=True)
+    hourly_rate = models.DecimalField(
+        max_digits=18, decimal_places=2, null=True, blank=True,
+        validators=[MinValueValidator(Decimal("0"))],
+    )
     currency = models.CharField(max_length=3, default="BIF")
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                check=models.Q(hourly_rate__isnull=True) | models.Q(hourly_rate__gte=0),
+                name="worker_rate_nonnegative",
+            ),
+        ]
 
 
 class TimeEntry(TenantOwnedModel):
@@ -19,6 +33,18 @@ class TimeEntry(TenantOwnedModel):
     normal_hours = models.DecimalField(max_digits=5, decimal_places=2, default=0)
     overtime_hours = models.DecimalField(max_digits=5, decimal_places=2, default=0)
     is_validated = models.BooleanField(default=False)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                check=models.Q(normal_hours__gte=0, overtime_hours__gte=0),
+                name="time_entry_hours_nonnegative",
+            ),
+            models.CheckConstraint(
+                check=models.Q(normal_hours__lte=24 - models.F("overtime_hours")),
+                name="time_entry_hours_lte_24",
+            ),
+        ]
 
 
 class Certification(TenantOwnedModel):
@@ -42,7 +68,12 @@ class WorkerCertification(TenantOwnedModel):
         constraints = [
             models.UniqueConstraint(
                 fields=["worker", "certification"], name="unique_worker_certification"
-            )
+            ),
+            models.CheckConstraint(
+                check=(models.Q(issued_at__isnull=True) | models.Q(expires_at__isnull=True)
+                       | models.Q(expires_at__gte=models.F("issued_at"))),
+                name="worker_certification_dates_ordered",
+            ),
         ]
 
 

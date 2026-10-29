@@ -31,6 +31,9 @@ npm run dev
 
 Tests frontend: `npm test` depuis `chantier_frontend`.
 
+Couverture des fonctions backend, parcours commandes/lignes et verification UI:
+[audit backend/frontend](chantier_frontend/docs/backend-frontend-coverage.md).
+
 ## Espace de travail et parcours metier
 
 - Tableau de bord calcule par le serveur sur toutes les donnees, filtre par chantier,
@@ -100,6 +103,16 @@ Puis configurer `DATABASE_URL` avec une URL PostgreSQL.
   la detection des modifications intervenues depuis leur derniere lecture.
 - Les actions d'approbation exigent la permission `validate`, distincte de `crud`.
   Les workflows ne peuvent etre decides qu'une fois, par le reviseur designe.
+- Les depenses et factures validees ou payees, ainsi que les pointages valides,
+  ne peuvent pas etre supprimes, meme par suppression de leur chantier ou parent.
+- La devise d'un budget avec des lignes, ou d'une ligne avec des depenses, est
+  verrouillee, y compris lorsque ces enfants ont ete supprimes logiquement.
+- Les pointages cumules d'un travailleur sont limites a 24 heures par jour sur
+  tous les chantiers. Les taux horaires sont positifs ou nuls; les certifications
+  sont valides entre leur delivrance et leur expiration, bornes incluses.
+- Les verrous d'ecriture du tenant sont acquis apres authentification et controle
+  des permissions de la vue. Les ecritures d'un meme tenant restent serialisees
+  pour proteger les validations de graphes et les totaux en concurrence PostgreSQL.
 - Un document partage par ACL est limite aux utilisateurs/roles autorises. Sans ACL,
   les permissions ordinaires du module s'appliquent. Le droit `read_shared` exige
   toujours un partage explicite. Proprietaire et administrateur conservent leur acces.

@@ -63,6 +63,14 @@ class UserSerializer(serializers.ModelSerializer):
 
 
 class RoleSerializer(TenantValidationMixin, serializers.ModelSerializer):
+    def validate_permissions(self, value):
+        if not isinstance(value, dict) or any(
+            not isinstance(actions, list) or any(not isinstance(action, str) for action in actions)
+            for actions in value.values()
+        ):
+            raise serializers.ValidationError("Les permissions doivent associer chaque module a une liste de droits.")
+        return value
+
     class Meta:
         model = Role
         fields = ["id", "tenant", "code", "name", "permissions", "created_at", "updated_at"]

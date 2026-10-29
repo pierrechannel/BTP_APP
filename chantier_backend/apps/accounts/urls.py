@@ -8,6 +8,7 @@ from apps.accounts.views import (
     MembershipViewSet,
     MeView,
     DirectoryView,
+    RoleDirectoryView,
     RoleViewSet,
     TenantViewSet,
     UserViewSet,
@@ -17,6 +18,7 @@ from apps.accounts.platform import PlatformOverviewView
 urlpatterns = [
     path("platform/overview/", PlatformOverviewView.as_view(), name="platform-overview"),
     path("directory/", DirectoryView.as_view(), name="tenant-directory"),
+    path("role-directory/", RoleDirectoryView.as_view(), name="tenant-role-directory"),
     path("token/", TokenObtainPairView.as_view(), name="token_obtain_pair"),
     path("token/refresh/", TokenRefreshView.as_view(), name="token_refresh"),
     path("token/blacklist/", TokenBlacklistView.as_view(), name="token_blacklist"),

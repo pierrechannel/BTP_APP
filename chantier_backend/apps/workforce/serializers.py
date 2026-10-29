@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from django.db.models import Sum
 
 from apps.common.serializers import TENANT_OWNED_READ_ONLY_FIELDS, TenantOwnedModelSerializer
 from apps.workforce.models import Assignment, Certification, TimeEntry, Worker, WorkerCertification
@@ -27,6 +28,17 @@ class TimeEntrySerializer(TenantOwnedModelSerializer):
             raise serializers.ValidationError("Les heures ne peuvent pas etre negatives.")
         if normal + overtime > 24:
             raise serializers.ValidationError("Le total journalier ne peut pas depasser 24 heures.")
+        worker = attrs.get("worker", getattr(self.instance, "worker", None))
+        work_date = attrs.get("work_date", getattr(self.instance, "work_date", None))
+        entries = TimeEntry.objects.filter(
+            tenant_id=worker.tenant_id, worker=worker, work_date=work_date,
+            deleted_at__isnull=True,
+        )
+        if self.instance:
+            entries = entries.exclude(pk=self.instance.pk)
+        total = entries.aggregate(hours=Sum("normal_hours") + Sum("overtime_hours"))["hours"] or 0
+        if total + normal + overtime > 24:
+            raise serializers.ValidationError("Le total du travailleur pour cette journee ne peut pas depasser 24 heures.")
         return attrs
 
 
@@ -38,6 +50,14 @@ class CertificationSerializer(TenantOwnedModelSerializer):
 
 
 class WorkerCertificationSerializer(TenantOwnedModelSerializer):
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        issued = attrs.get("issued_at", getattr(self.instance, "issued_at", None))
+        expires = attrs.get("expires_at", getattr(self.instance, "expires_at", None))
+        if issued and expires and expires < issued:
+            raise serializers.ValidationError({"expires_at": "L'expiration doit suivre la delivrance."})
+        return attrs
+
     class Meta:
         model = WorkerCertification
         fields = "__all__"

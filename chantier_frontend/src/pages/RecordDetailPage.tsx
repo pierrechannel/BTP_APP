@@ -1,20 +1,28 @@
 import { useEffect, useState } from "react";
 import { Link as RouterLink, useNavigate, useParams } from "react-router-dom";
-import { Alert, Box, Breadcrumbs, Button, Dialog, DialogActions, DialogContent, DialogTitle, Divider, Link, LinearProgress,
-  MenuItem, Paper, Skeleton, Stack, TextField, Typography } from "@mui/material";
+import { Alert, Box, Breadcrumbs, Button, Dialog, DialogActions, DialogContent, DialogTitle, Link, LinearProgress,
+  MenuItem, Paper, Skeleton, Stack, Tab, Tabs, TextField, Typography } from "@mui/material";
 import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import { api } from "../api/client";
 import { ApiRecord } from "../api/types";
-import { downloadFile, errorMessage, FieldInfo, fieldLabel, formatValue, Metadata, notifyChange, recordTitle, versionHeaders } from "../api/workspace";
-import { allResources, BusinessAction, ResourceConfig } from "../resources";
+import { downloadFile, errorMessage, FieldInfo, formatValue, Metadata, notifyChange, recordTitle, versionHeaders } from "../api/workspace";
+import { resourceByModel, BusinessAction, ResourceConfig } from "../resources";
 import { useWorkspace } from "../state/workspace";
 import { useAuth } from "../state/auth";
 import { RecordEditor } from "../components/RecordEditor";
 import { StatusBadge } from "../components/StatusBadge";
-import { RelatedValue } from "../components/RelatedValue";
 import { InspectionChecklist } from "../components/InspectionChecklist";
+import { RelatedRecords } from "../components/RelatedRecords";
+import { PurchaseOrderLines } from "../components/PurchaseOrderLines";
+import { BudgetSummary } from "../components/BudgetSummary";
+import { PhotoPreview } from "../components/PhotoPreview";
+import { isDeletionLocked, isRecordLocked, relatedWorkflows } from "../api/workflows";
+import { DetailInformation, RecordTracking } from "../components/DetailInformation";
+import RefreshIcon from "@mui/icons-material/Refresh";
+import { BudgetWorkspace } from "../components/BudgetWorkspace";
+import { RelatedValue } from "../components/RelatedValue";
 
 const transitions: Record<string, Array<[string, string]>> = {
   study: [["preparation", "Préparation"]], preparation: [["in_progress", "Démarrer le chantier"], ["suspended", "Suspendre"]],
@@ -26,7 +34,7 @@ export function RecordDetailPage({ resource }: { resource: ResourceConfig }) {
   const { id } = useParams();
   const navigate = useNavigate();
   const { can, projectId, projects } = useWorkspace();
-  const { user } = useAuth();
+  const { user, refreshMe } = useAuth();
   const [record, setRecord] = useState<ApiRecord | null>(null);
   const [fields, setFields] = useState<Record<string, FieldInfo>>({});
   const [loading, setLoading] = useState(true);
@@ -37,14 +45,24 @@ export function RecordDetailPage({ resource }: { resource: ResourceConfig }) {
   const [deleting, setDeleting] = useState(false);
   const [action, setAction] = useState<BusinessAction | null>(null);
   const [actionValue, setActionValue] = useState("");
+  const [actionComment, setActionComment] = useState("");
+  const [actionError, setActionError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [section, setSection] = useState("overview");
+  const [relatedVisited, setRelatedVisited] = useState(false);
   const [stock, setStock] = useState<Array<{ location: string; name: string; quantity: string; unit: string }>>([]);
   const endpoint = `${resource.endpoint}${id}/`;
-  const locked = (["budget.expense", "budget.invoice", "progress.dailyreport"].includes(resource.model) && ["validated", "paid"].includes(String(record?.status)))
-    || (resource.model === "workforce.timeentry" && Boolean(record?.is_validated))
-    || (resource.model === "qhse.inspection" && record?.status === "completed");
+  useEffect(() => { setSection("overview"); setRelatedVisited(false); }, [endpoint]);
+  const locked = record ? isRecordLocked(resource.model, record) : false;
+  const deletionLocked = record ? isDeletionLocked(resource.model, record) : false;
+  const writable = !resource.platformWrite || user?.is_superuser;
   useEffect(() => {
-    const controller = new AbortController(); setLoading(true); setError("");
+    const refresh = () => setRevision((value) => value + 1);
+    window.addEventListener("chantier:data-changed", refresh);
+    return () => window.removeEventListener("chantier:data-changed", refresh);
+  }, []);
+  useEffect(() => {
+    const controller = new AbortController(); if (!record || String(record.id) !== id) { setLoading(true); setRecord(null); } setError("");
     Promise.all([api.get<ApiRecord>(endpoint, { signal: controller.signal }), api.options<Metadata>(endpoint, { signal: controller.signal })])
       .then(([record, metadata]) => { setRecord(record.data); setFields(metadata.data.fields ?? {}); })
       .catch((error) => { if (!controller.signal.aborted) setError(errorMessage(error)); })
@@ -61,17 +79,22 @@ export function RecordDetailPage({ resource }: { resource: ResourceConfig }) {
 
   const execute = async () => {
     if (!record) return;
-    setBusy(true); setError("");
+    setBusy(true); setError(""); setActionError("");
     try {
       if (deleting) {
         await api.delete(endpoint, { headers: versionHeaders(record) });
+        if (resource.group === "administration") await refreshMe().catch(() => {});
         notifyChange(); navigate(resource.path, { replace: true }); return;
       }
       if (!action) return;
       if (action.download) {
         await downloadFile(`${endpoint}${action.endpoint}/`, String(record.original_name ?? `rapport-${id}.json`));
       } else {
-        const body: Record<string, unknown> = action.field ? { [action.field]: action.field === "progress_percent" ? Number(actionValue) : actionValue } : {};
+        const body: Record<string, unknown> = { ...action.payload, ...(action.field ? { [action.field]: action.field === "progress_percent" ? Number(actionValue) : actionValue } : {}) };
+        if (action.comment) {
+          if (action.endpoint === "mark-failed") body.error = { message: actionComment };
+          else body.comment = actionComment;
+        }
         if (action.endpoint === "run") {
           const project = projects.find((row) => String(row.id) === projectId);
           body.parameters = project ? { project: project.code } : {};
@@ -84,64 +107,88 @@ export function RecordDetailPage({ resource }: { resource: ResourceConfig }) {
         setRecord(response.data); setRevision((value) => value + 1); setMessage("L’opération a été effectuée.");
       }
       setAction(null);
-    } catch (error) { setError(errorMessage(error)); setAction(null); setDeleting(false); }
+    } catch (error) { setActionError(errorMessage(error)); }
     finally { setBusy(false); }
   };
-  const choices = action?.endpoint === "transition-status" ? transitions[String(record?.status)] ?? [] : action?.choices;
+  const choices = action?.endpoint === "transition-status" && resource.model === "projects.project" ? transitions[String(record?.status)] ?? [] : action?.choices?.filter(([value]) => resource.model !== "resources.purchaseorder" || record?.status !== "partially_received" || value === "received");
   const actions = (resource.actions ?? []).filter((action) => can(resource.group, action.permission)
     && (!action.visible || (record && action.visible(record)))
     && !(resource.model === "documents.approvalworkflow" && String(record?.reviewer) !== String(user?.id))
     && !(action.endpoint === "transition-status" && record?.status === "closed"));
-  const related = resource.model === "projects.project"
-    ? ["planning.task", "projects.lot", "progress.dailyreport"].map((model) => allResources.find((item) => item.model === model)!).filter((item) => can(item.group)) : [];
+  const invalidProgress = action?.field === "progress_percent" && (!Number.isInteger(Number(actionValue)) || Number(actionValue) < 0 || Number(actionValue) > 100);
+  const focused = ["resources.purchaseorder", "budget.budget"].includes(resource.model);
+  const hasRelated = resource.model !== "budget.budget" && relatedWorkflows(resource.model).some((link) => resourceByModel[link.model] && can(resourceByModel[link.model].group));
 
-  return <Stack spacing={3}>
+  return <Stack spacing={2}>
     <Breadcrumbs><Link component={RouterLink} to="/" underline="hover">Vue d’ensemble</Link>
       <Link component={RouterLink} to={resource.path} underline="hover">{resource.label}</Link><Typography color="text.primary">Fiche</Typography></Breadcrumbs>
     {loading ? <><Skeleton width="60%" height={70} /><Skeleton variant="rounded" height={320} /></> : <>
-      <Stack direction={{ xs: "column", md: "row" }} justifyContent="space-between" gap={2}>
-        <Box><Typography variant="overline" color="primary.main">{resource.singular}</Typography><Typography variant="h4">{record ? recordTitle(record) : "Fiche indisponible"}</Typography>
-          <Stack direction="row" alignItems="center" spacing={2} mt={1}>{Boolean(record?.status || record?.state) && <StatusBadge value={record?.status ?? record?.state} />}
-            <Typography variant="body2" color="text.secondary">{record?.updated_at ? `Mis à jour le ${formatValue(record.updated_at, "updated_at")}` : resource.description}</Typography></Stack></Box>
+      <Paper variant="outlined" sx={{ p: { xs: 2, sm: 2.5 } }}><Stack direction={{ xs: "column", md: "row" }} justifyContent="space-between" gap={2}>
+        <Stack direction="row" gap={2} minWidth={0}><Box sx={{ display: { xs: "none", sm: "flex" }, alignItems: "center", justifyContent: "center", width: 48, height: 48, bgcolor: "#e3eee0", color: "primary.main", borderRadius: 1, flexShrink: 0 }}>{resource.icon}</Box><Box minWidth={0}><Typography variant="overline" color="primary.main">Fiche · {resource.singular}</Typography><Typography variant="h4" sx={{ fontSize: { xs: 21, sm: 25 }, overflowWrap: "anywhere" }}>{record ? recordTitle(record) : "Fiche indisponible"}</Typography>
+          <Stack direction="row" alignItems="center" spacing={2} mt={1} flexWrap="wrap">{Boolean(record?.status || record?.state || record?.is_validated) && <StatusBadge value={record?.status ?? record?.state ?? "validated"} />}
+            <Typography variant="body2" color="text.secondary">{record?.updated_at ? `Mis à jour le ${formatValue(record.updated_at, "updated_at")}` : resource.description}</Typography></Stack></Box></Stack>
         <Stack direction="row" spacing={1} alignSelf="flex-start"><Button startIcon={<ArrowBackIcon />} onClick={() => navigate(resource.path)}>Retour</Button>
-          {record && !locked && !resource.readOnly && !resource.immutable && can(resource.group, "update") && <Button variant="outlined" startIcon={<EditOutlinedIcon />} onClick={() => setEditing(true)}>Modifier</Button>}
+          {record && writable && !locked && !resource.readOnly && !resource.immutable && can(resource.group, "update") && <Button variant="outlined" startIcon={<EditOutlinedIcon />} onClick={() => setEditing(true)}>Modifier</Button>}
+          <Button aria-label="Actualiser la fiche" onClick={() => setRevision((value) => value + 1)} sx={{ minWidth: 36, px: 1 }}><RefreshIcon fontSize="small" /></Button>
         </Stack>
-      </Stack>
+      </Stack>{record && focused && <Stack direction="row" gap={3} flexWrap="wrap" mt={2} pt={2} sx={{ borderTop: 1, borderColor: "divider" }}>
+        {record.project != null && <Box><Typography variant="caption" color="text.secondary">Chantier</Typography><RelatedValue model="projects.project" id={record.project} /></Box>}
+        {record.supplier != null && <Box><Typography variant="caption" color="text.secondary">Fournisseur</Typography><RelatedValue model="resources.supplier" id={record.supplier} /></Box>}
+        {record.ordered_at != null && <Box><Typography variant="caption" color="text.secondary">Commandée le</Typography><Typography variant="body2">{formatValue(record.ordered_at, "ordered_at")}</Typography></Box>}
+      </Stack>}</Paper>
       {message && <Alert severity="success" onClose={() => setMessage("")}>{message}</Alert>}
       {error && <Alert severity="error" action={<Button color="inherit" onClick={() => setRevision((value) => value + 1)}>Actualiser</Button>}>{error}</Alert>}
       {record && <>
+        <Tabs value={section} onChange={(_, value) => { setSection(value); if (value === "related") setRelatedVisited(true); }} variant="scrollable" scrollButtons="auto" allowScrollButtonsMobile aria-label="Sections de la fiche">
+          <Tab value="overview" label={resource.model === "budget.budget" ? "Lignes budgétaires" : resource.model === "resources.purchaseorder" ? "Lignes de commande" : "Vue d’ensemble"} id="detail-tab-overview" aria-controls="detail-overview" />
+          {resource.model === "budget.budget" && <Tab value="expenses" label="Dépenses" />}
+          {focused && <Tab value="information" label="Informations" />}
+          {hasRelated && <Tab value="related" label="Données associées" id="detail-tab-related" aria-controls="detail-related" />}
+          <Tab value="tracking" label="Traçabilité" id="detail-tab-tracking" aria-controls="detail-tracking" />
+        </Tabs>
+        {locked && <Alert severity="info">Cette fiche est finalisée. Ses informations ne peuvent plus être modifiées.{deletionLocked && " Sa suppression est également interdite."}</Alert>}
+        {resource.model === "budget.budget" && <BudgetSummary record={record} revision={revision} />}
+        {resource.model === "budget.budget" && <Box hidden={!["overview", "expenses"].includes(section)}><BudgetWorkspace budget={record} revision={revision} mode={section === "expenses" ? "expenses" : "lines"} /></Box>}
+        <Stack id="detail-overview" role="tabpanel" aria-labelledby="detail-tab-overview" hidden={section !== "overview"} spacing={2} sx={{ display: section === "overview" ? "flex" : "none" }}>
+        {resource.model === "resources.purchaseorder" && <PurchaseOrderLines order={record} revision={revision} />}
+        {resource.model === "progress.photo" && <PhotoPreview record={record} />}
         {resource.model === "qhse.inspection" && <InspectionChecklist inspection={record} revision={revision} />}
         {resource.model === "resources.material" && <Paper variant="outlined" sx={{ p: 3 }}><Typography variant="h6" mb={2}>Stock par dépôt</Typography>
           {!stock.length && <Typography color="text.secondary">Créez un dépôt, puis enregistrez un mouvement de stock.</Typography>}
           <Stack direction="row" gap={2} flexWrap="wrap">{stock.map((item) => <Box key={item.location} sx={{ p: 2, bgcolor: "#f4f7f0", borderRadius: 2, minWidth: 160 }}><Typography variant="caption" color="text.secondary">{item.name}</Typography><Typography variant="h5">{Number(item.quantity).toLocaleString("fr-FR")} <Typography component="span" variant="body2">{item.unit}</Typography></Typography></Box>)}</Stack>
         </Paper>}
-        {actions.length > 0 && <Paper variant="outlined" sx={{ p: 2 }}><Stack direction="row" gap={1.5} flexWrap="wrap">{actions.map((item, index) => <Button key={item.endpoint} variant={index === 0 ? "contained" : "outlined"} onClick={() => {
-          setAction(item); setActionValue(item.field === "progress_percent" ? String(record.progress_percent ?? 0) : "");
+        {actions.length > 0 && <Paper variant="outlined" sx={{ p: 2 }}><Stack direction="row" gap={1.5} flexWrap="wrap">{actions.map((item, index) => <Button key={`${item.endpoint}:${item.label}`} disabled={busy} variant={index === 0 ? "contained" : "outlined"} onClick={async () => {
+          if (item.download) {
+            setBusy(true); setError("");
+            try { await downloadFile(`${endpoint}${item.endpoint}/`, String(record.original_name ?? (resource.model === "progress.photo" ? String(record.image ?? "photo.jpg").split("/").at(-1) : `rapport-${id}.json`))); }
+            catch (error) { setError(errorMessage(error)); } finally { setBusy(false); }
+            return;
+          }
+          setAction(item); setActionError(""); setActionComment(""); setActionValue(item.field === "progress_percent" ? String(record.progress_percent ?? 0) : "");
         }}>{item.label}</Button>)}</Stack></Paper>}
         {typeof record.progress_percent === "number" && <Paper variant="outlined" sx={{ p: 3 }}><Stack direction="row" justifyContent="space-between" mb={1.5}><Typography fontWeight={600}>Avancement de la tâche</Typography><Typography fontWeight={700}>{record.progress_percent} %</Typography></Stack>
           <LinearProgress variant="determinate" value={record.progress_percent} sx={{ height: 10, borderRadius: 5 }} /></Paper>}
-        <Paper variant="outlined"><Box sx={{ px: 3, py: 2.5 }}><Typography variant="h6">Informations</Typography></Box><Divider />
-          <Box sx={{ p: 3, display: "grid", gridTemplateColumns: { xs: "1fr", md: "1fr 1fr" }, gap: 3 }}>
-            {Object.entries(record).filter(([name, value]) => !["id", "tenant", "deleted_at", "created_by", "updated_by", "version", "created_at", "updated_at", "file", "result_file", "checksum"].includes(name)
-              && value !== null && value !== "").map(([name, value]) => <Box key={name} sx={typeof value === "object" || ["work_done", "description", "difficulties", "body"].includes(name) ? { gridColumn: "1 / -1" } : undefined}>
-              <Typography variant="caption" color="text.secondary" component="div" sx={{ mb: .75 }}>{fieldLabel(name)}</Typography>
-              {fields[name]?.related_model ? <RelatedValue model={fields[name].related_model!} id={value} /> : ["status", "state"].includes(name) ? <StatusBadge value={value} />
-                : <Typography variant="body2" sx={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", fontFamily: typeof value === "object" ? "monospace" : undefined }}>{formatValue(value, name)}</Typography>}
-            </Box>)}
-          </Box>
-        </Paper>
-        {related.length > 0 && <Paper variant="outlined" sx={{ p: 3 }}><Typography variant="h6" mb={2}>Poursuivre sur ce chantier</Typography><Stack direction="row" spacing={1} flexWrap="wrap">
-          {related.map((item) => <Button key={item.model} component={RouterLink} to={`${item.path}?project=${record.id}`} variant="outlined">{item.label}</Button>)}</Stack></Paper>}
-        {!resource.readOnly && !resource.immutable && can(resource.group, "delete") && <Box><Button color="error" startIcon={<DeleteOutlineIcon />} onClick={() => setDeleting(true)}>Supprimer cet élément</Button></Box>}
+        {!focused && <DetailInformation record={record} model={resource.model} fields={fields} />}
+        </Stack>
+        {focused && <Box hidden={section !== "information"}><DetailInformation record={record} model={resource.model} fields={fields} /></Box>}
+        {hasRelated && <Box id="detail-related" role="tabpanel" aria-labelledby="detail-tab-related" hidden={section !== "related"}>{relatedVisited && <RelatedRecords model={resource.model} record={record} revision={revision} />}</Box>}
+        <Stack id="detail-tracking" role="tabpanel" aria-labelledby="detail-tab-tracking" hidden={section !== "tracking"} spacing={2} sx={{ display: section === "tracking" ? "flex" : "none" }}>
+          <RecordTracking record={record} />
+          {writable && !deletionLocked && !resource.readOnly && !resource.immutable && can(resource.group, "delete") && <Paper variant="outlined" sx={{ p: 2.5 }}><Typography variant="subtitle2" fontWeight={700}>Gestion de la fiche</Typography><Typography variant="body2" color="text.secondary" my={1}>La suppression retire cet élément des listes et conserve son historique.</Typography><Button color="error" variant="outlined" startIcon={<DeleteOutlineIcon />} onClick={() => { setDeleting(true); setActionError(""); }}>Supprimer cet élément</Button></Paper>}
+        </Stack>
         <RecordEditor resource={resource} record={record} open={editing} onClose={() => setEditing(false)} onSaved={(row) => { setRecord(row); setRevision((value) => value + 1); setMessage("Les modifications ont été enregistrées."); }} />
       </>}
     </>}
     <Dialog open={Boolean(action) || deleting} onClose={busy ? undefined : () => { setAction(null); setDeleting(false); }} fullWidth maxWidth="sm">
       <DialogTitle>{deleting ? "Supprimer cet élément ?" : action?.label}</DialogTitle>
       <DialogContent><Typography color="text.secondary" sx={{ mb: 2 }}>{deleting ? "L’élément et ses données associées seront retirés des listes. Les données seront conservées dans l’historique." : "Cette opération sera enregistrée sur le chantier."}</Typography>
+        {actionError && <Alert severity="error" sx={{ mb: 2 }}>{actionError}</Alert>}
+        {resource.model === "resources.purchaseorder" && <Alert severity="info" sx={{ mb: 2 }}>Le suivi de statut ne crée aucun mouvement de stock et n’envoie aucun e-mail. Une commande envoyée ne peut plus être modifiée.</Alert>}
+        {action?.endpoint === "run" && <Alert severity="info" sx={{ mb: 2 }}>Périmètre : {projectId ? String(projects.find((row) => String(row.id) === projectId)?.name ?? "Chantier sélectionné") : "Tous les chantiers accessibles"}.</Alert>}
         {action?.field && (choices ? <TextField select fullWidth label="Nouvel état" value={actionValue} onChange={(event) => setActionValue(event.target.value)}>{choices.map(([value, label]) => <MenuItem key={value} value={value}>{label}</MenuItem>)}</TextField>
-          : <TextField autoFocus fullWidth label="Avancement (%)" type="number" value={actionValue} inputProps={{ min: 0, max: 100, step: 1 }} onChange={(event) => setActionValue(event.target.value)} />)}
-      </DialogContent><DialogActions sx={{ p: 3 }}><Button disabled={busy} onClick={() => { setAction(null); setDeleting(false); }}>Annuler</Button><Button variant="contained" color={deleting ? "error" : "primary"} disabled={busy || Boolean(action?.field && actionValue === "")} onClick={execute}>{busy ? "Traitement…" : deleting ? "Supprimer" : "Confirmer"}</Button></DialogActions>
+          : <TextField autoFocus fullWidth label="Avancement (%)" type="number" value={actionValue} error={Boolean(invalidProgress)} helperText={invalidProgress ? "Saisissez un entier entre 0 et 100." : ""} inputProps={{ min: 0, max: 100, step: 1 }} onChange={(event) => setActionValue(event.target.value)} />)}
+        {action?.comment && <TextField fullWidth multiline minRows={3} label={action.endpoint === "mark-failed" ? "Motif de l’échec" : "Commentaire (facultatif)"} value={actionComment} onChange={(event) => setActionComment(event.target.value)} />}
+      </DialogContent><DialogActions sx={{ p: 3 }}><Button disabled={busy} onClick={() => { setAction(null); setDeleting(false); }}>Annuler</Button><Button variant="contained" color={deleting ? "error" : "primary"} disabled={busy || Boolean(invalidProgress) || Boolean(action?.field && actionValue === "") || Boolean(action?.endpoint === "mark-failed" && !actionComment.trim())} onClick={execute}>{busy ? "Traitement…" : deleting ? "Supprimer" : "Confirmer"}</Button></DialogActions>
     </Dialog>
   </Stack>;
 }

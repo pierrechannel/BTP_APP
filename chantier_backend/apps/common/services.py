@@ -1,14 +1,42 @@
 from django.db import models, transaction
 from django.utils import timezone
+from rest_framework.exceptions import ValidationError
 
 from apps.accounts.models import Tenant
 from apps.common.models import TenantOwnedModel
+
+
+def check_deletion_allowed(instance):
+    """Protect approved records, including those hidden through deleted parents."""
+    pending = [instance]
+    visited = set()
+    while pending:
+        current = pending.pop()
+        key = (current._meta.label_lower, current.pk)
+        if key in visited or current.deleted_at:
+            continue
+        visited.add(key)
+        financial = current._meta.label_lower in {"budget.expense", "budget.invoice"}
+        if (current._meta.label_lower == "resources.purchaseorder" and current.status != "draft"
+                or current._meta.label_lower == "resources.purchaseorderline" and current.purchase_order.status != "draft"):
+            raise ValidationError("Une commande envoyee ou finalisee et ses lignes ne peuvent pas etre supprimees.")
+        if ((financial and current.status in {"validated", "paid"})
+                or (current._meta.label_lower == "workforce.timeentry" and current.is_validated)):
+            raise ValidationError("Suppression interdite: cette ressource contient une piece ou un pointage valide.")
+        for relation in current._meta.related_objects:
+            if (relation.on_delete in {models.CASCADE, models.PROTECT}
+                    and issubclass(relation.related_model, TenantOwnedModel)):
+                pending.extend(relation.related_model.objects.filter(**{
+                    relation.field.name: current, "tenant_id": instance.tenant_id,
+                    "deleted_at__isnull": True,
+                }))
 
 
 @transaction.atomic
 def soft_delete(instance, user):
     """Preserve the CASCADE tree while making its tenant-owned rows invisible."""
     Tenant.objects.select_for_update().get(pk=instance.tenant_id)
+    check_deletion_allowed(instance)
     pending = [instance]
     visited = set()
     deleted_at = timezone.now()

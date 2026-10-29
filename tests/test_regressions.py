@@ -13,6 +13,9 @@ from apps.planning.models import Task, TaskDependency
 from apps.projects.models import Lot, Project
 from apps.sync.models import SyncMutation
 from apps.reports.models import ReportRun, ReportTemplate
+from apps.budget.models import Budget, BudgetLine, Expense, Invoice
+from apps.workforce.models import Certification, TimeEntry, Worker, WorkerCertification
+from apps.workforce.services import has_valid_certification
 
 pytestmark = pytest.mark.django_db
 
@@ -313,3 +316,332 @@ def test_report_async_dispatch_happens_after_commit_and_failure_is_visible(setup
         dispatch.assert_called_once_with(str(run.pk))
     run.refresh_from_db()
     assert run.status == "failed"
+
+
+def test_budget_currency_changes_require_no_lines_even_deleted_ones(setup):
+    tenant, _, project, _, client = setup
+    budget = Budget.objects.create(tenant=tenant, project=project)
+    url = f"/api/v1/budget/budgets/{budget.pk}/"
+    assert client.patch(url, {"currency": "USD"}).status_code == 200
+    line = BudgetLine.objects.create(tenant=tenant, budget=budget, category="Labor", label="Work", amount=10, currency="USD")
+    assert client.patch(url, {"currency": "BIF"}).status_code == 400
+    assert client.patch(url, {"currency": "USD"}).status_code == 200
+    assert client.delete(f"/api/v1/budget/budget-lines/{line.pk}/").status_code == 204
+    assert client.patch(url, {"currency": "BIF"}).status_code == 400
+    budget.refresh_from_db()
+    assert budget.currency == "USD"
+
+
+@pytest.mark.parametrize("kind,status", [("expense", "validated"), ("expense", "paid"), ("invoice", "validated"), ("invoice", "paid"), ("time_entry", True)])
+def test_approved_records_and_parents_cannot_be_deleted(setup, kind, status):
+    tenant, _, project, _, client = setup
+    if kind == "time_entry":
+        parent = Worker.objects.create(tenant=tenant, first_name="A", last_name="B")
+        record = TimeEntry.objects.create(tenant=tenant, worker=parent, project=project, work_date=date(2026, 10, 29), normal_hours=8, is_validated=status)
+        record_url = f"/api/v1/workforce/time-entries/{record.pk}/"
+        parent_url = f"/api/v1/workforce/workers/{parent.pk}/"
+    else:
+        values = dict(tenant=tenant, amount_excluding_tax=10, amount_including_tax=10, currency="BIF", status=status)
+        if kind == "expense":
+            budget = Budget.objects.create(tenant=tenant, project=project)
+            parent = BudgetLine.objects.create(tenant=tenant, budget=budget, category="Labor", label="Work", amount=10)
+            record = Expense.objects.create(**values, budget_line=parent, date=date(2026, 10, 29))
+            record_url = f"/api/v1/budget/expenses/{record.pk}/"
+            parent_url = f"/api/v1/budget/budget-lines/{parent.pk}/"
+            assert client.delete(f"/api/v1/budget/budgets/{budget.pk}/").status_code == 400
+        else:
+            parent = project
+            record = Invoice.objects.create(**values, project=project, invoice_number="INV1", issue_date=date(2026, 10, 29))
+            record_url = f"/api/v1/budget/invoices/{record.pk}/"
+            parent_url = f"/api/v1/projects/{project.pk}/"
+    for url in [record_url, parent_url, f"/api/v1/projects/{project.pk}/"]:
+        assert client.delete(url).status_code == 400
+    for obj in [record, parent, project]:
+        obj.refresh_from_db()
+        assert obj.deleted_at is None
+    assert not AuditLog.objects.filter(tenant=tenant, action="destroy").exists()
+
+
+def test_draft_financial_and_time_records_can_be_deleted(setup):
+    tenant, _, project, _, client = setup
+    worker = Worker.objects.create(tenant=tenant, first_name="A", last_name="B")
+    entry = TimeEntry.objects.create(tenant=tenant, worker=worker, project=project, work_date=date(2026, 10, 29))
+    invoice = Invoice.objects.create(tenant=tenant, project=project, invoice_number="DRAFT", issue_date=date(2026, 10, 29), amount_excluding_tax=10, amount_including_tax=10, currency="BIF")
+    assert client.delete(f"/api/v1/workforce/time-entries/{entry.pk}/").status_code == 204
+    assert client.delete(f"/api/v1/budget/invoices/{invoice.pk}/").status_code == 204
+
+
+def test_time_entries_limit_daily_total_across_projects_and_partial_updates(setup):
+    tenant, _, project, _, client = setup
+    worker = Worker.objects.create(tenant=tenant, first_name="A", last_name="B")
+    other = Project.objects.create(tenant=tenant, name="Other", code="P2")
+    existing = TimeEntry.objects.create(tenant=tenant, worker=worker, project=project, work_date=date(2026, 10, 29), normal_hours=16, is_validated=True)
+    endpoint = "/api/v1/workforce/time-entries/"
+    payload = {"worker": str(worker.pk), "project": str(other.pk), "work_date": "2026-10-29", "normal_hours": "7", "overtime_hours": "2"}
+    assert client.post(endpoint, payload).status_code == 400
+    payload["overtime_hours"] = "1"
+    response = client.post(endpoint, payload)
+    assert response.status_code == 201, response.data
+    url = f"{endpoint}{response.data['id']}/"
+    assert client.patch(url, {"normal_hours": "7"}).status_code == 200
+    assert client.patch(url, {"overtime_hours": "2"}).status_code == 400
+    assert client.patch(url, {"work_date": "2026-10-30", "normal_hours": "20"}).status_code == 200
+    assert client.patch(url, {"work_date": "2026-10-29"}).status_code == 400
+    assert client.delete(url).status_code == 204
+    payload["normal_hours"] = "8"
+    payload["overtime_hours"] = "0"
+    assert client.post(endpoint, payload).status_code == 201
+    existing.refresh_from_db()
+    assert existing.normal_hours == 16
+
+
+def test_time_entry_worker_change_checks_destination_daily_total(setup):
+    tenant, _, project, _, client = setup
+    workers = [Worker.objects.create(tenant=tenant, first_name=name, last_name="B") for name in "AB"]
+    entries = [TimeEntry.objects.create(tenant=tenant, worker=worker, project=project, work_date=date(2026, 10, 29), normal_hours=16) for worker in workers]
+    assert client.patch(f"/api/v1/workforce/time-entries/{entries[0].pk}/", {"worker": str(workers[1].pk)}).status_code == 400
+
+
+def test_worker_rate_validation_on_create_and_patch(setup):
+    _, _, _, _, client = setup
+    endpoint = "/api/v1/workforce/workers/"
+    payload = {"first_name": "A", "last_name": "B", "hourly_rate": "-1"}
+    assert client.post(endpoint, payload).status_code == 400
+    payload["hourly_rate"] = "0"
+    response = client.post(endpoint, payload)
+    assert response.status_code == 201
+    url = f"{endpoint}{response.data['id']}/"
+    assert client.patch(url, {"hourly_rate": "-0.01"}).status_code == 400
+    assert client.patch(url, {"hourly_rate": None}, format="json").status_code == 200
+
+
+def test_certification_date_validation_and_validity_boundaries(setup):
+    tenant, _, _, _, client = setup
+    worker = Worker.objects.create(tenant=tenant, first_name="A", last_name="B")
+    certification = Certification.objects.create(tenant=tenant, code="C", name="Certification")
+    endpoint = "/api/v1/workforce/worker-certifications/"
+    payload = {"worker": str(worker.pk), "certification": str(certification.pk), "issued_at": "2026-10-29", "expires_at": "2026-10-28"}
+    assert client.post(endpoint, payload).status_code == 400
+    payload["expires_at"] = "2026-10-30"
+    response = client.post(endpoint, payload)
+    assert response.status_code == 201, response.data
+    url = f"{endpoint}{response.data['id']}/"
+    assert client.patch(url, {"issued_at": "2026-10-31"}).status_code == 400
+    assert client.patch(url, {"expires_at": "2026-10-28"}).status_code == 400
+    record = WorkerCertification.objects.get(pk=response.data["id"])
+    assert not has_valid_certification(record, date(2026, 10, 28))
+    assert has_valid_certification(record, date(2026, 10, 29))
+    assert has_valid_certification(record, date(2026, 10, 30))
+    assert not has_valid_certification(record, date(2026, 10, 31))
+    record.expires_at = None
+    assert not has_valid_certification(record, date(2026, 10, 28))
+    assert has_valid_certification(record, date(2030, 1, 1))
+    record.issued_at = None
+    assert has_valid_certification(record, date(2020, 1, 1))
+
+
+def test_denied_writes_never_acquire_tenant_write_lock(setup):
+    tenant, admin, _, (task, _, _), client = setup
+    user, _ = member(tenant, permissions={"planning": ["read"]})
+    endpoint = f"/api/v1/planning/tasks/{task.pk}/"
+    with patch("apps.common.concurrency.Tenant.objects.select_for_update") as lock:
+        client.force_authenticate(None)
+        client.credentials(HTTP_X_TENANT_ID=str(tenant.pk))
+        assert client.patch(endpoint, {"name": "Denied"}).status_code == 401
+        client.force_authenticate(user)
+        assert client.patch(endpoint, {"name": "Denied"}).status_code == 403
+        lock.assert_not_called()
+    client.force_authenticate(admin)
+    from django.db import connection
+    with patch("apps.common.concurrency.Tenant.objects.select_for_update", wraps=Tenant.objects.select_for_update) as lock:
+        assert client.patch(endpoint, {"name": "Allowed"}).status_code == 200
+        lock.assert_called_once()
+        assert connection.in_atomic_block
+
+
+def test_budget_line_cannot_change_currency_with_existing_expenses(setup):
+    tenant, _, project, _, client = setup
+    budget = Budget.objects.create(tenant=tenant, project=project)
+    other_project = Project.objects.create(tenant=tenant, name="USD project", code="USD")
+    other_budget = Budget.objects.create(tenant=tenant, project=other_project, currency="USD")
+    line = BudgetLine.objects.create(tenant=tenant, budget=budget, category="Labor", label="Work", amount=10)
+    expense = Expense.objects.create(tenant=tenant, budget_line=line, date=date(2026, 10, 29), amount_excluding_tax=10, amount_including_tax=10, currency="BIF")
+    url = f"/api/v1/budget/budget-lines/{line.pk}/"
+    payload = {"budget": str(other_budget.pk), "currency": "USD"}
+    assert client.patch(url, payload).status_code == 400
+    assert client.delete(f"/api/v1/budget/expenses/{expense.pk}/").status_code == 204
+    assert client.patch(url, payload).status_code == 400
+
+
+def test_workforce_constraints_reject_invalid_direct_database_writes(setup):
+    from django.db import IntegrityError, transaction
+
+    tenant, _, project, _, _ = setup
+    worker = Worker.objects.create(tenant=tenant, first_name="A", last_name="B")
+    certification = Certification.objects.create(tenant=tenant, code="C", name="Certification")
+    with pytest.raises(IntegrityError), transaction.atomic():
+        Worker.objects.filter(pk=worker.pk).update(hourly_rate=-1)
+    for normal, overtime in [(-1, 0), (0, -1), (24, 1)]:
+        with pytest.raises(IntegrityError), transaction.atomic():
+            TimeEntry.objects.create(tenant=tenant, worker=worker, project=project, work_date=date(2026, 10, 29), normal_hours=normal, overtime_hours=overtime)
+    with pytest.raises(IntegrityError), transaction.atomic():
+        WorkerCertification.objects.create(tenant=tenant, worker=worker, certification=certification, issued_at=date(2026, 10, 30), expires_at=date(2026, 10, 29))
+
+
+def test_collection_metadata_exposes_supported_filters_and_search(setup):
+    *_, client = setup
+    response = client.options("/api/v1/resources/purchase-orders/")
+    assert response.status_code == 200
+    assert "supplier" in response.data["filters"]
+    assert "order_number" in response.data["search_fields"]
+    assert "created_at" in response.data["ordering_fields"]
+    response = client.options("/api/v1/workforce/time-entries/")
+    assert response.data["search_fields"] == []
+    assert "is_validated" in response.data["filters"]
+
+
+def test_purchase_order_lines_validate_quantity_and_price_on_create_and_patch(setup):
+    from apps.resources.models import Material, PurchaseOrder, Supplier
+
+    tenant, _, project, _, client = setup
+    supplier = Supplier.objects.create(tenant=tenant, name="Supplier")
+    order = PurchaseOrder.objects.create(tenant=tenant, project=project, supplier=supplier, order_number="PO-UX")
+    material = Material.objects.create(tenant=tenant, reference="M", name="Material", unit="kg")
+    endpoint = "/api/v1/resources/purchase-order-lines/"
+    payload = {"purchase_order": str(order.pk), "material": str(material.pk), "quantity": "2.500", "unit_price": "100.50", "currency": "BIF"}
+    for quantity, price in [("0", "1"), ("-1", "1"), ("1", "-1")]:
+        assert client.post(endpoint, {**payload, "quantity": quantity, "unit_price": price}).status_code == 400
+    response = client.post(endpoint, payload)
+    assert response.status_code == 201
+    url = f"{endpoint}{response.data['id']}/"
+    assert client.patch(url, {"unit_price": "-1"}).status_code == 400
+    assert client.patch(url, {"quantity": "0"}).status_code == 400
+    assert client.patch(url, {"quantity": "0.001", "unit_price": "0"}).status_code == 200
+
+
+def test_progress_photo_download_is_authenticated_and_tenant_scoped(setup, settings, tmp_path):
+    from io import BytesIO
+    from PIL import Image
+    from apps.progress.models import Photo
+
+    settings.MEDIA_ROOT = tmp_path
+    tenant, admin, project, _, client = setup
+    content = BytesIO()
+    Image.new("RGB", (2, 2)).save(content, format="PNG")
+    photo = Photo.objects.create(tenant=tenant, project=project,
+        image=SimpleUploadedFile("site.png", content.getvalue(), content_type="image/png"))
+    endpoint = f"/api/v1/progress/photos/{photo.pk}/download/"
+    response = client.get(endpoint)
+    assert response.status_code == 200
+    assert b"".join(response.streaming_content) == content.getvalue()
+    response.close()
+    outsider, _ = member(tenant, permissions={"progress": []})
+    client.force_authenticate(outsider)
+    assert client.get(endpoint).status_code == 403
+    foreign = Tenant.objects.create(name="Foreign", slug="foreign-photos")
+    client.force_authenticate(admin)
+    client.credentials(HTTP_X_TENANT_ID=str(foreign.pk))
+    assert client.get(endpoint).status_code == 404
+    client.force_authenticate(None)
+    assert client.get(endpoint).status_code == 401
+
+
+def test_role_directory_supports_sharing_without_exposing_permissions(setup):
+    tenant, _, _, _, client = setup
+    user, role = member(tenant, permissions={"documents": ["crud"]})
+    foreign = Tenant.objects.create(name="Foreign", slug="foreign-roles")
+    Role.objects.create(tenant=foreign, code="secret", name="Secret", permissions={"*": ["crud"]})
+    client.force_authenticate(user)
+    assert client.get("/api/v1/auth/roles/").status_code == 403
+    response = client.get("/api/v1/auth/role-directory/")
+    assert response.status_code == 200
+    assert str(role.pk) in {str(item["id"]) for item in response.data}
+    assert all(set(item) == {"id", "code", "name"} and item["name"] != "Secret" for item in response.data)
+
+
+def test_json_metadata_and_role_permissions_preserve_structured_values(setup):
+    *_, client = setup
+    metadata = client.options("/api/v1/auth/roles/").data
+    assert metadata["actions"]["POST"]["permissions"]["type"] == "json"
+    template = client.options("/api/v1/qhse/inspection-templates/").data
+    assert template["actions"]["POST"]["items"]["type"] == "json"
+    payload = {"code": "custom", "name": "Custom", "permissions": {"projects": ["read"]}}
+    response = client.post("/api/v1/auth/roles/", payload, format="json")
+    assert response.status_code == 201
+    assert response.data["permissions"] == {"projects": ["read"]}
+    for invalid in ['{"projects":["read"]}', ["read"], {"projects": "read"}]:
+        assert client.patch(f"/api/v1/auth/roles/{response.data['id']}/", {"permissions": invalid}, format="json").status_code == 400
+
+
+def test_order_transitions_lock_header_lines_and_parent_deletion(setup):
+    from apps.resources.models import Material, PurchaseOrder, StockMovement, Supplier
+
+    tenant, _, project, _, client = setup
+    supplier = Supplier.objects.create(tenant=tenant, name="Supplier")
+    material = Material.objects.create(tenant=tenant, name="Cement", reference="C", unit="sac")
+    order = PurchaseOrder.objects.create(tenant=tenant, project=project, supplier=supplier, order_number="PO-LIFECYCLE")
+    url = f"/api/v1/resources/purchase-orders/{order.pk}/"
+    transition = url + "transition-status/"
+    assert client.post(transition, {"to_status": "sent"}).status_code == 400
+    assert client.patch(url, {"status": "sent"}).status_code == 400
+    line_payload = {"purchase_order": str(order.pk), "material": str(material.pk), "quantity": "2.500", "unit_price": "10.00", "currency": "BIF"}
+    response = client.post("/api/v1/resources/purchase-order-lines/", line_payload)
+    assert response.status_code == 201, response.data
+    assert response.data["unit"] == "sac"
+    line_url = f"/api/v1/resources/purchase-order-lines/{response.data['id']}/"
+    assert client.post(transition, {"to_status": "sent"}, HTTP_IF_MATCH='"1"').status_code == 200
+    order.refresh_from_db()
+    assert order.status == "sent" and order.version == 2
+    assert client.patch(url, {"order_number": "CHANGED"}).status_code == 400
+    assert client.post("/api/v1/resources/purchase-order-lines/", line_payload).status_code == 400
+    assert client.patch(line_url, {"quantity": "3"}).status_code == 400
+    for endpoint in [line_url, url, f"/api/v1/projects/{project.pk}/", f"/api/v1/resources/suppliers/{supplier.pk}/"]:
+        assert client.delete(endpoint).status_code == 400
+    assert client.post(transition, {"to_status": "cancelled"}, HTTP_IF_MATCH='"1"').status_code == 409
+    assert client.post(transition, {"to_status": "partially_received"}, HTTP_IF_MATCH='"2"').status_code == 200
+    assert client.post(transition, {"to_status": "cancelled"}).status_code == 400
+    assert client.post(transition, {"to_status": "received"}).status_code == 200
+    assert client.post(transition, {"to_status": "draft"}).status_code == 400
+    assert not StockMovement.objects.exists()
+
+
+def test_order_line_cannot_move_between_orders_and_actions_require_update(setup):
+    from apps.resources.models import Material, PurchaseOrder, Supplier
+
+    tenant, _, project, _, client = setup
+    supplier = Supplier.objects.create(tenant=tenant, name="Supplier")
+    material = Material.objects.create(tenant=tenant, name="Cement", reference="C", unit="sac")
+    orders = [PurchaseOrder.objects.create(tenant=tenant, project=project, supplier=supplier, order_number=number) for number in ["PO1", "PO2"]]
+    payload = {"purchase_order": str(orders[0].pk), "material": str(material.pk), "quantity": "1", "unit_price": "10"}
+    line = client.post("/api/v1/resources/purchase-order-lines/", payload).data
+    assert client.patch(f"/api/v1/resources/purchase-order-lines/{line['id']}/", {"purchase_order": str(orders[1].pk)}).status_code == 400
+    user, _ = member(tenant, permissions={"resources": ["read"]})
+    client.force_authenticate(user)
+    assert client.post(f"/api/v1/resources/purchase-orders/{orders[0].pk}/transition-status/", {"to_status": "sent"}).status_code == 403
+
+
+def test_budget_line_totals_and_expenses_are_scoped_to_budget(setup):
+    from django.utils import timezone
+
+    tenant, _, project, _, client = setup
+    budget = Budget.objects.create(tenant=tenant, project=project, currency="USD")
+    line = BudgetLine.objects.create(tenant=tenant, budget=budget, category="Work", label="Structure", amount=1000, currency="USD")
+    other_project = Project.objects.create(tenant=tenant, code="OTHER", name="Other")
+    other_budget = Budget.objects.create(tenant=tenant, project=other_project, currency="USD")
+    other_line = BudgetLine.objects.create(tenant=tenant, budget=other_budget, category="Work", label="Other", amount=500, currency="USD")
+    own = []
+    for target, amount, status, deleted in [(line, 120, "validated", False), (line, 30, "paid", False), (line, 99, "draft", False), (line, 10, "validated", True), (other_line, 200, "validated", False)]:
+        expense = Expense.objects.create(tenant=tenant, budget_line=target, date=date(2026, 10, 29), amount_excluding_tax=amount, amount_including_tax=amount, currency="USD", status=status, deleted_at=timezone.now() if deleted else None)
+        if target == line and not deleted:
+            own.append(str(expense.pk))
+    response = client.get(f"/api/v1/budget/budget-lines/?budget={budget.pk}")
+    assert response.status_code == 200
+    assert len(response.data["results"]) == 1
+    assert response.data["results"][0]["spent"] == "150.00"
+    assert response.data["results"][0]["remaining"] == "850.00"
+    assert response.data["results"][0]["project_name"] == project.name
+    result = client.get(f"/api/v1/budget/expenses/?budget={budget.pk}")
+    assert {str(row["id"]) for row in result.data["results"]} == set(own)
+    assert client.get("/api/v1/budget/expenses/?budget=not-a-uuid").status_code == 400
+    summary = client.get(f"/api/v1/budget/budgets/{budget.pk}/summary/").data
+    assert summary["spent"] == 150 and summary["remaining"] == 850

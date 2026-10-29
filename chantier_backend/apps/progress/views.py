@@ -1,5 +1,7 @@
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from django.http import FileResponse, Http404
+from pathlib import Path
 
 from apps.common.viewsets import TenantModelViewSet
 from apps.progress.models import DailyReport, Photo, ProgressUpdate, Snag
@@ -33,6 +35,17 @@ class PhotoViewSet(TenantModelViewSet):
     queryset = Photo.objects.select_related("project", "task", "daily_report", "tenant")
     serializer_class = PhotoSerializer
     filterset_fields = ["project", "task", "daily_report"]
+
+    @action(detail=True, methods=["get"])
+    def download(self, request, pk=None):
+        photo = self.get_object()
+        if not photo.image:
+            raise Http404
+        try:
+            return FileResponse(photo.image.open("rb"), as_attachment=True,
+                                filename=Path(photo.image.name).name)
+        except FileNotFoundError as exc:
+            raise Http404 from exc
 
 
 class ProgressUpdateViewSet(TenantModelViewSet):

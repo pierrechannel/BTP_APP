@@ -11,6 +11,10 @@ def validate_time_entry(time_entry: TimeEntry, user) -> TimeEntry:
 
 
 def has_valid_certification(worker_certification: WorkerCertification, on_date) -> bool:
+    if worker_certification.deleted_at or worker_certification.worker.deleted_at or worker_certification.certification.deleted_at:
+        return False
+    if worker_certification.issued_at and worker_certification.issued_at > on_date:
+        return False
     if worker_certification.expires_at is None:
         return True
     return worker_certification.expires_at >= on_date

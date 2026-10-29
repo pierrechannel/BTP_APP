@@ -19,6 +19,7 @@ const sections = [
   { label: "OPÉRATIONS", paths: ["/projects", "/lots", "/planning", "/progress"] },
   { label: "GESTION", paths: ["/budget", "/resources", "/workforce", "/equipment"] },
   { label: "SUIVI & COLLABORATION", paths: ["/qhse", "/documents", "/reports", "/notifications", "/sync"] },
+  { label: "ENTREPRISE", paths: ["/administration"] },
 ];
 export function AdminLayout({ children }: { children: ReactNode }) {
   const location = useLocation();

@@ -48,6 +48,15 @@ class TenantViewSet(ReadOnlyModelViewSet):
         return Tenant.objects.filter(memberships__user=self.request.user, memberships__is_active=True)
 
 
+class RoleDirectoryView(APIView):
+    """Expose role names for sharing selectors without administration access."""
+    permission_classes = [IsAuthenticated, HasTenantContext, IsTenantMember]
+
+    def get(self, request):
+        return Response(list(Role.objects.filter(tenant_id=request.tenant_id)
+                             .order_by("name").values("id", "code", "name")))
+
+
 class UserViewSet(VersionedWriteMixin, ModelViewSet):
     serializer_class = UserSerializer
     permission_classes = [IsAuthenticated, HasTenantContext, IsTenantMember, CanManageGlobalUsers]

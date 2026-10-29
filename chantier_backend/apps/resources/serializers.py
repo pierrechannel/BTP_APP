@@ -9,6 +9,7 @@ from apps.resources.models import (
 )
 from rest_framework import serializers
 from apps.resources.stock import stock_at
+from decimal import Decimal
 
 
 class MaterialSerializer(TenantOwnedModelSerializer):
@@ -26,7 +27,16 @@ class SupplierSerializer(TenantOwnedModelSerializer):
 
 
 class PurchaseOrderSerializer(TenantOwnedModelSerializer):
-    status = serializers.ChoiceField(choices=["draft", "sent", "partially_received", "received", "cancelled"], default="draft")
+    status = serializers.ChoiceField(choices=["draft", "sent", "partially_received", "received", "cancelled"], read_only=True)
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        current = self.instance.status if self.instance else PurchaseOrder.DRAFT
+        if self.initial_data.get("status", current) != current:
+            raise serializers.ValidationError({"status": "Utilisez les actions de changement de statut."})
+        if self.instance and current != PurchaseOrder.DRAFT:
+            raise serializers.ValidationError("Seule une commande brouillon peut etre modifiee.")
+        return attrs
     class Meta:
         model = PurchaseOrder
         fields = "__all__"
@@ -34,6 +44,21 @@ class PurchaseOrderSerializer(TenantOwnedModelSerializer):
 
 
 class PurchaseOrderLineSerializer(TenantOwnedModelSerializer):
+    order_status = serializers.CharField(source="purchase_order.status", read_only=True)
+    material_name = serializers.CharField(source="material.name", read_only=True)
+    unit = serializers.CharField(source="material.unit", read_only=True)
+    quantity = serializers.DecimalField(max_digits=18, decimal_places=3, min_value=Decimal("0.001"))
+    unit_price = serializers.DecimalField(max_digits=18, decimal_places=2, min_value=Decimal("0"))
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        order = attrs.get("purchase_order", getattr(self.instance, "purchase_order", None))
+        if self.instance and order.pk != self.instance.purchase_order_id:
+            raise serializers.ValidationError({"purchase_order": "Une ligne ne peut pas changer de commande."})
+        if order.status != PurchaseOrder.DRAFT:
+            raise serializers.ValidationError("Les lignes d'une commande envoyee ou finalisee sont verrouillees.")
+        return attrs
+
     class Meta:
         model = PurchaseOrderLine
         fields = "__all__"

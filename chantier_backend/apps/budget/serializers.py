@@ -2,9 +2,18 @@ from apps.budget.models import Amendment, Budget, BudgetLine, ExchangeRate, Expe
 from apps.common.serializers import TENANT_OWNED_READ_ONLY_FIELDS, TenantOwnedModelSerializer
 from rest_framework import serializers
 from decimal import Decimal
+from django.db.models import Sum
 
 
 class BudgetSerializer(TenantOwnedModelSerializer):
+    project_name = serializers.CharField(source="project.name", read_only=True)
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        if (self.instance and attrs.get("currency", self.instance.currency) != self.instance.currency
+                and self.instance.lines.exists()):
+            raise serializers.ValidationError({"currency": "La devise d'un budget avec des lignes ne peut pas changer."})
+        return attrs
+
     class Meta:
         model = Budget
         fields = "__all__"
@@ -12,6 +21,22 @@ class BudgetSerializer(TenantOwnedModelSerializer):
 
 
 class BudgetLineSerializer(TenantOwnedModelSerializer):
+    project_name = serializers.CharField(source="budget.project.name", read_only=True)
+    lot_name = serializers.CharField(source="lot.name", read_only=True, allow_null=True)
+    spent = serializers.SerializerMethodField()
+    remaining = serializers.SerializerMethodField()
+
+    def get_spent(self, instance):
+        if not hasattr(instance, "_spent_total"):
+            instance._spent_total = instance.expenses.filter(
+                tenant_id=instance.tenant_id, deleted_at__isnull=True,
+                status__in=[Expense.VALIDATED, Expense.PAID],
+            ).aggregate(total=Sum("amount_including_tax"))["total"] or Decimal("0")
+        return format(instance._spent_total, ".2f")
+
+    def get_remaining(self, instance):
+        return format(instance.amount - Decimal(self.get_spent(instance)), ".2f")
+
     def validate(self, attrs):
         attrs = super().validate(attrs)
         budget = attrs.get("budget", getattr(self.instance, "budget", None))
@@ -21,6 +46,9 @@ class BudgetLineSerializer(TenantOwnedModelSerializer):
             raise serializers.ValidationError({"lot": "Le lot doit appartenir au chantier du budget."})
         if currency != budget.currency:
             raise serializers.ValidationError({"currency": "La devise doit correspondre au budget."})
+        if (self.instance and currency != self.instance.currency
+                and self.instance.expenses.exists()):
+            raise serializers.ValidationError({"currency": "La devise d'une ligne avec des depenses ne peut pas changer."})
         if attrs.get("amount", Decimal("0")) < 0:
             raise serializers.ValidationError({"amount": "Le montant ne peut pas etre negatif."})
         return attrs

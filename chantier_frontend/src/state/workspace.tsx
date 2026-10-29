@@ -21,6 +21,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const membership = user?.memberships.find((item) => item.tenant.id === tenantId && item.is_active);
   const can = useCallback((resource: string, action = "read") => {
     if (user?.is_superuser) return true;
+    if (resource === "administration") return membership?.role === "admin";
     const permissions = membership?.permissions ?? {};
     const allowed = [...(permissions[resource] ?? []), ...(permissions["*"] ?? [])];
     return allowed.includes(action) || (allowed.includes("crud") && ["create", "read", "update", "delete"].includes(action))

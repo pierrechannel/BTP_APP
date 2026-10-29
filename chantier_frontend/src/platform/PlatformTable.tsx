@@ -14,6 +14,8 @@ import RefreshIcon from "@mui/icons-material/Refresh";
 
 import { ApiRecord } from "../api/types";
 import { fetchCollection, fieldLabel, errorMessage } from "../api/workspace";
+import { dataTableSx } from "../components/DataTableTools";
+import { frFR } from "@mui/x-data-grid/locales";
 
 export function PlatformTable({
   title,
@@ -84,6 +86,9 @@ export function PlatformTable({
           rows={records}
           columns={gridColumns}
           loading={loading}
+          rowHeight={52}
+          columnHeaderHeight={42}
+          localeText={frFR.components.MuiDataGrid.defaultProps.localeText}
           disableRowSelectionOnClick
           slots={{ toolbar: PlatformToolbar }}
           slotProps={{
@@ -97,9 +102,7 @@ export function PlatformTable({
           initialState={{ pagination: { paginationModel: { pageSize: 10, page: 0 } } }}
           pageSizeOptions={[10, 25, 50, 100]}
           sx={{
-            border: 0,
-            "& .MuiDataGrid-columnHeaders": { bgcolor: "background.default" },
-            "& .MuiDataGrid-toolbarContainer": { p: 1, gap: 1, borderBottom: 1, borderColor: "divider" },
+            ...dataTableSx,
           }}
         />
       </Paper>

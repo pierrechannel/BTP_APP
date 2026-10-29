@@ -12,6 +12,17 @@ from apps.budget.serializers import (
 )
 from apps.budget.services import get_budget_summary, validate_expense, transition_invoice
 from apps.common.viewsets import TenantModelViewSet
+from django.db.models import DecimalField, F, Q, Sum, Value
+from django.db.models.functions import Coalesce
+import django_filters
+
+
+class ExpenseFilter(django_filters.FilterSet):
+    budget = django_filters.UUIDFilter(field_name="budget_line__budget_id")
+
+    class Meta:
+        model = Expense
+        fields = ["budget", "budget_line", "status", "currency", "date"]
 
 
 class BudgetViewSet(TenantModelViewSet):
@@ -25,7 +36,11 @@ class BudgetViewSet(TenantModelViewSet):
 
 
 class BudgetLineViewSet(TenantModelViewSet):
-    queryset = BudgetLine.objects.select_related("budget", "lot", "tenant")
+    queryset = BudgetLine.objects.select_related("budget__project", "lot", "tenant").annotate(
+        _spent_total=Coalesce(Sum("expenses__amount_including_tax", filter=Q(
+            expenses__deleted_at__isnull=True, expenses__status__in=[Expense.VALIDATED, Expense.PAID], expenses__tenant_id=F("tenant_id"),
+        )), Value(0), output_field=DecimalField(max_digits=24, decimal_places=2)),
+    )
     serializer_class = BudgetLineSerializer
     filterset_fields = ["budget", "lot", "category", "currency"]
     search_fields = ["label", "category"]
@@ -35,6 +50,7 @@ class ExpenseViewSet(TenantModelViewSet):
     queryset = Expense.objects.select_related("budget_line", "tenant")
     serializer_class = ExpenseSerializer
     filterset_fields = ["budget_line", "status", "currency", "date"]
+    filterset_class = ExpenseFilter
     search_fields = ["supplier_name"]
 
     @action(detail=True, methods=["post"])

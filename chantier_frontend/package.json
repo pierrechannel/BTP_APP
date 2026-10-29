@@ -4,10 +4,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc -b && vite build",
+    "dev": "vite --config vite.config.ts",
+    "build": "tsc -b && vite build --config vite.config.ts",
     "test": "node --test tests/auth-client.test.mjs tests/workspace.test.mjs",
-    "preview": "vite preview"
+    "test:browser": "node --experimental-websocket tests/browser-workflows.mjs",
+    "preview": "vite preview --config vite.config.ts"
   },
   "dependencies": {
     "@emotion/react": "^11.13.3",
