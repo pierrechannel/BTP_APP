@@ -1,7 +1,10 @@
 from types import SimpleNamespace
+from datetime import date
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
 from django.db.models import Avg, Count, Sum
+from django.db.models.functions import TruncMonth
 from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import IsAuthenticated
@@ -41,7 +44,7 @@ class DashboardView(APIView):
             deleted_at__isnull=True, budget_line__deleted_at__isnull=True,
             budget_line__budget__deleted_at__isnull=True,
         )
-        today = timezone.localdate()
+        today = timezone.localdate(timezone=ZoneInfo("Africa/Bujumbura"))
         result = {"date": today, "projects": None, "planning": None, "budget": None, "qhse": None}
         if can_read("projects"):
             result["projects"] = {
@@ -57,16 +60,29 @@ class DashboardView(APIView):
                 "progress": tasks.aggregate(value=Avg("progress_percent"))["value"] or 0,
                 "overdue": pending.filter(planned_end_date__lt=today).count(),
                 "statuses": list(tasks.order_by().values("status").annotate(count=Count("id"))),
-                "upcoming": list(pending.filter(planned_end_date__isnull=False)
-                                 .order_by("planned_end_date").values(
+                "overdue_tasks": list(pending.filter(planned_end_date__lt=today)
+                                 .order_by("planned_end_date", "id").values(
+                                     "id", "name", "status", "planned_end_date", "project__name", "project_id"
+                                 )[:6]),
+                "upcoming": list(pending.filter(planned_end_date__gte=today)
+                                 .order_by("planned_end_date", "id").values(
                                      "id", "name", "status", "progress_percent", "planned_end_date",
                                      "project__name", "project_id"
                                  )[:6]),
             }
         if can_read("budget"):
+            validated = expenses.filter(status__in=[Expense.VALIDATED, Expense.PAID])
+            month_index = today.year * 12 + today.month - 1
+            months = [date(index // 12, index % 12 + 1, 1) for index in range(month_index - 11, month_index + 1)]
+            amounts = {(row["month"], row["currency"]): row["amount"] for row in validated.filter(date__gte=months[0], date__lte=today)
+                       .annotate(month=TruncMonth("date")).values("month", "currency")
+                       .annotate(amount=Sum("amount_including_tax"))}
+            currencies = list(validated.order_by("currency").values_list("currency", flat=True).distinct())
             result["budget"] = {
+                "monthly_spent": [{"month": month, "currency": currency, "amount": amounts.get((month, currency), 0)} for currency in currencies for month in months],
                 "count": expenses.count(),
-                "pending": expenses.filter(status__in=[Expense.DRAFT, Expense.SUBMITTED]).count(),
+                "pending": expenses.filter(status=Expense.SUBMITTED).count(),
+                "drafts": expenses.filter(status=Expense.DRAFT).count(),
                 "spent": list(expenses.filter(status__in=[Expense.VALIDATED, Expense.PAID])
                               .order_by("currency").values("currency")
                               .annotate(amount=Sum("amount_including_tax"))),

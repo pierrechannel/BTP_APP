@@ -3,6 +3,8 @@ import uuid
 from django.conf import settings
 from django.db import models
 
+from apps.common.identifiers import AUTOMATIC_IDENTIFIERS
+
 
 class TimestampedModel(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
@@ -37,6 +39,17 @@ class TenantOwnedModel(UUIDModel, TimestampedModel):
     )
     deleted_at = models.DateTimeField(null=True, blank=True)
     version = models.PositiveIntegerField(default=1)
+
+    def save(self, *args, **kwargs):
+        identifier = AUTOMATIC_IDENTIFIERS.get(self._meta.label_lower)
+        if identifier:
+            field, prefix = identifier
+            if self._state.adding and not getattr(self, field):
+                # The full primary UUID avoids counters racing across requests.
+                setattr(self, field, f"{prefix}-{self.pk.hex.upper()}")
+                if kwargs.get("update_fields") is not None:
+                    kwargs["update_fields"] = set(kwargs["update_fields"]) | {field}
+        return super().save(*args, **kwargs)
 
     class Meta:
         abstract = True

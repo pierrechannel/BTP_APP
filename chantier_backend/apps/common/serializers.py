@@ -1,6 +1,7 @@
 from rest_framework import serializers
 
 from apps.accounts.models import Membership, User
+from apps.common.identifiers import AUTOMATIC_IDENTIFIERS
 
 TENANT_OWNED_READ_ONLY_FIELDS = [
     "id",
@@ -58,4 +59,11 @@ class TenantValidationMixin:
 
 
 class TenantOwnedModelSerializer(TenantValidationMixin, serializers.ModelSerializer):
-    pass
+    def get_fields(self):
+        fields = super().get_fields()
+        identifier = AUTOMATIC_IDENTIFIERS.get(self.Meta.model._meta.label_lower)
+        if identifier and identifier[0] in fields:
+            field = fields[identifier[0]]
+            field.read_only = True
+            field.required = False
+        return fields

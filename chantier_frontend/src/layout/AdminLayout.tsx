@@ -45,7 +45,7 @@ export function AdminLayout({ children }: { children: ReactNode }) {
         <ListItemIcon><DashboardOutlinedIcon /></ListItemIcon><ListItemText primary="Vue d’ensemble" />
       </ListItemButton>
       {sections.map((section) => {
-        const items = resources.filter((resource) => section.paths.includes(resource.path) && (can(resource.group) || can(resource.group, "create")));
+        const items = resources.filter((resource) => resource.navigation !== false && section.paths.includes(resource.path) && (can(resource.group) || can(resource.group, "create")));
         return items.length ? <Box key={section.label} mt={2.5}><Typography sx={{ px: 3, mb: 1, fontSize: 9, fontWeight: 600, letterSpacing: ".15em", color: "#738f7e" }}>{section.label}</Typography>
           {items.map((resource) => <ListItemButton key={resource.path} component={RouterLink} to={resource.path}
             selected={location.pathname === resource.path || location.pathname.startsWith(resource.path + "/")} onClick={() => setMobileOpen(false)} sx={itemStyle}>

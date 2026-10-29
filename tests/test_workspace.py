@@ -37,6 +37,72 @@ def test_dashboard_omits_unauthorized_modules_and_directory_is_tenant_scoped(set
     assert {item["email"] for item in directory.data} == {"admin@test.local", "worker@test.local"}
 
 
+def test_dashboard_separates_overdue_and_upcoming_using_bujumbura_date(setup):
+    from datetime import datetime, timezone
+    from unittest.mock import patch
+
+    tenant, _, project, _, client = setup
+    for index in range(8):
+        Task.objects.create(tenant=tenant, project=project, name=f"Retard {index}", planned_end_date=date(2026, 10, 20))
+    today = Task.objects.create(tenant=tenant, project=project, name="Aujourd’hui", planned_end_date=date(2026, 10, 29))
+    tomorrow = Task.objects.create(tenant=tenant, project=project, name="Demain", planned_end_date=date(2026, 10, 30))
+    Task.objects.create(tenant=tenant, project=project, name="Terminée", planned_end_date=date(2026, 10, 20), status=Task.DONE)
+    Task.objects.create(tenant=tenant, project=project, name="Annulée", planned_end_date=date(2026, 10, 20), status=Task.CANCELLED)
+    with patch("apps.projects.dashboard.timezone.now", return_value=datetime(2026, 10, 28, 22, 30, tzinfo=timezone.utc)):
+        response = client.get("/api/v1/projects/dashboard/", {"project": str(project.pk)})
+    assert response.status_code == 200
+    assert response.data["date"] == date(2026, 10, 29)
+    planning = response.data["planning"]
+    assert planning["overdue"] == 8
+    assert len(planning["overdue_tasks"]) == 6
+    assert [row["id"] for row in planning["upcoming"]] == [today.pk, tomorrow.pk]
+    assert all(row["planned_end_date"] < date(2026, 10, 29) for row in planning["overdue_tasks"])
+
+
+def test_dashboard_counts_only_submitted_expenses_as_pending(setup):
+    tenant, _, project, _, client = setup
+    budget = Budget.objects.create(tenant=tenant, project=project)
+    line = BudgetLine.objects.create(tenant=tenant, budget=budget, label="Travaux", amount=1000)
+    for status in [Expense.DRAFT, Expense.DRAFT, Expense.SUBMITTED, Expense.VALIDATED, Expense.PAID, Expense.REJECTED]:
+        Expense.objects.create(tenant=tenant, budget_line=line, date=date(2026, 10, 29), amount_excluding_tax=100, amount_including_tax=100, currency="BIF", status=status)
+    data = client.get("/api/v1/projects/dashboard/", {"project": str(project.pk)}).data["budget"]
+    assert data["pending"] == 1
+    assert data["drafts"] == 2
+    assert data["count"] == 6
+    assert data["spent"] == [{"currency": "BIF", "amount": Decimal("200")}]
+
+
+def test_dashboard_monthly_chart_keeps_currencies_and_zero_months(setup):
+    from datetime import datetime, timezone
+    from unittest.mock import patch
+
+    tenant, _, project, _, client = setup
+    budget = Budget.objects.create(tenant=tenant, project=project)
+    line = BudgetLine.objects.create(tenant=tenant, budget=budget, label="Travaux", amount=1000)
+    for day, currency, amount, status in [
+        (date(2026, 10, 1), "BIF", 200, Expense.VALIDATED),
+        (date(2026, 9, 15), "USD", 5, Expense.PAID),
+        (date(2026, 9, 16), "USD", 999, Expense.DRAFT),
+        (date(2024, 1, 1), "BIF", 777, Expense.PAID),
+        (date(2026, 11, 1), "BIF", 888, Expense.VALIDATED),
+    ]:
+        Expense.objects.create(tenant=tenant, budget_line=line, date=day, currency=currency, amount_excluding_tax=amount, amount_including_tax=amount, status=status)
+    other = Project.objects.create(tenant=tenant, name="Autre")
+    other_budget = Budget.objects.create(tenant=tenant, project=other)
+    other_line = BudgetLine.objects.create(tenant=tenant, budget=other_budget, label="Autre", amount=1000)
+    Expense.objects.create(tenant=tenant, budget_line=other_line, date=date(2026, 10, 1), currency="BIF", amount_excluding_tax=100, amount_including_tax=100, status=Expense.PAID)
+    with patch("apps.projects.dashboard.timezone.now", return_value=datetime(2026, 10, 29, 12, tzinfo=timezone.utc)):
+        rows = client.get("/api/v1/projects/dashboard/", {"project": str(project.pk)}).data["budget"]["monthly_spent"]
+    assert len(rows) == 24
+    bif = [row for row in rows if row["currency"] == "BIF"]
+    usd = [row for row in rows if row["currency"] == "USD"]
+    assert bif[0]["month"] == date(2025, 11, 1)
+    assert bif[-1]["month"] == date(2026, 10, 1)
+    assert sum(row["amount"] for row in bif) == Decimal("200")
+    assert sum(row["amount"] for row in usd) == Decimal("5")
+    assert len([row for row in bif if row["amount"] == 0]) == 11
+
+
 def test_options_exposes_form_constraints_and_relations_for_nonadmin(setup):
     tenant, _, _, _, client = setup
     user, _ = member(tenant, permissions={"planning": ["create", "read", "update"]})

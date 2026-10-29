@@ -14,9 +14,14 @@ export function usePlatformOverview() {
   const [error, setError] = useState("");
   const [revision, setRevision] = useState(0);
   useEffect(() => {
-    const controller = new AbortController(); setLoading(true); setError("");
+    const refresh = () => setRevision((value) => value + 1);
+    window.addEventListener("chantier:data-changed", refresh);
+    return () => window.removeEventListener("chantier:data-changed", refresh);
+  }, []);
+  useEffect(() => {
+    const controller = new AbortController(); setData(null); setLoading(true); setError("");
     api.get<PlatformOverview>("/auth/platform/overview/", { signal: controller.signal })
-      .then(({ data }) => setData(data)).catch((error) => {
+      .then(({ data }) => { if (!controller.signal.aborted) setData(data); }).catch((error) => {
         if (!controller.signal.aborted) { setData(null); setError(errorMessage(error)); }
       }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();

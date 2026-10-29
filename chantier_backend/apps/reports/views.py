@@ -6,6 +6,7 @@ from apps.reports.models import KpiSnapshot, ReportRun, ReportTemplate
 from apps.reports.serializers import KpiSnapshotSerializer, ReportRunSerializer, ReportTemplateSerializer
 from apps.reports.services import enqueue_report_run
 from django.http import FileResponse, Http404
+from pathlib import Path
 
 
 class ReportTemplateViewSet(TenantModelViewSet):
@@ -13,6 +14,11 @@ class ReportTemplateViewSet(TenantModelViewSet):
     serializer_class = ReportTemplateSerializer
     filterset_fields = ["code"]
     search_fields = ["name", "code"]
+
+    @action(detail=False, methods=["get"])
+    def summary(self, request):
+        from apps.reports.analytics import report_analytics
+        return Response(report_analytics(request.tenant_id, request.query_params))
 
     @action(detail=True, methods=["post"])
     def run(self, request, pk=None):
@@ -37,7 +43,7 @@ class ReportRunViewSet(TenantModelViewSet):
             raise Http404
         try:
             return FileResponse(run.result_file.open("rb"), as_attachment=True,
-                                filename=f"rapport-{run.pk}.json")
+                                filename=f"rapport-{run.pk}{Path(run.result_file.name).suffix}")
         except FileNotFoundError as exc:
             raise Http404 from exc
 

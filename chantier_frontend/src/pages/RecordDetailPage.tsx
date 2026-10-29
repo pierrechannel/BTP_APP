@@ -18,6 +18,8 @@ import { RelatedRecords } from "../components/RelatedRecords";
 import { PurchaseOrderLines } from "../components/PurchaseOrderLines";
 import { BudgetSummary } from "../components/BudgetSummary";
 import { PhotoPreview } from "../components/PhotoPreview";
+import { DocumentPreview } from "../components/DocumentPreview";
+import { ReportPreview } from "../components/ReportPreview";
 import { isDeletionLocked, isRecordLocked, relatedWorkflows } from "../api/workflows";
 import { DetailInformation, RecordTracking } from "../components/DetailInformation";
 import RefreshIcon from "@mui/icons-material/Refresh";
@@ -52,6 +54,11 @@ export function RecordDetailPage({ resource }: { resource: ResourceConfig }) {
   const [relatedVisited, setRelatedVisited] = useState(false);
   const [stock, setStock] = useState<Array<{ location: string; name: string; quantity: string; unit: string }>>([]);
   const endpoint = `${resource.endpoint}${id}/`;
+  useEffect(() => {
+    if (resource.model !== "reports.reportrun" || !record || record.status !== "pending") return;
+    const timer = window.setInterval(() => setRevision((value) => value + 1), 3000);
+    return () => window.clearInterval(timer);
+  }, [resource.model, record?.status, endpoint]);
   useEffect(() => { setSection("overview"); setRelatedVisited(false); }, [endpoint]);
   const locked = record ? isRecordLocked(resource.model, record) : false;
   const deletionLocked = record ? isDeletionLocked(resource.model, record) : false;
@@ -111,7 +118,7 @@ export function RecordDetailPage({ resource }: { resource: ResourceConfig }) {
     finally { setBusy(false); }
   };
   const choices = action?.endpoint === "transition-status" && resource.model === "projects.project" ? transitions[String(record?.status)] ?? [] : action?.choices?.filter(([value]) => resource.model !== "resources.purchaseorder" || record?.status !== "partially_received" || value === "received");
-  const actions = (resource.actions ?? []).filter((action) => can(resource.group, action.permission)
+  const actions = (resource.actions ?? []).filter((action) => !(resource.model === "reports.reportrun" && action.download) && can(resource.group, action.permission)
     && (!action.visible || (record && action.visible(record)))
     && !(resource.model === "documents.approvalworkflow" && String(record?.reviewer) !== String(user?.id))
     && !(action.endpoint === "transition-status" && record?.status === "closed"));
@@ -140,8 +147,9 @@ export function RecordDetailPage({ resource }: { resource: ResourceConfig }) {
       {error && <Alert severity="error" action={<Button color="inherit" onClick={() => setRevision((value) => value + 1)}>Actualiser</Button>}>{error}</Alert>}
       {record && <>
         <Tabs value={section} onChange={(_, value) => { setSection(value); if (value === "related") setRelatedVisited(true); }} variant="scrollable" scrollButtons="auto" allowScrollButtonsMobile aria-label="Sections de la fiche">
-          <Tab value="overview" label={resource.model === "budget.budget" ? "Lignes budgétaires" : resource.model === "resources.purchaseorder" ? "Lignes de commande" : "Vue d’ensemble"} id="detail-tab-overview" aria-controls="detail-overview" />
+          <Tab value="overview" label={resource.model === "reports.reportrun" ? "Rapport" : resource.model === "budget.budget" ? "Lignes budgétaires" : resource.model === "resources.purchaseorder" ? "Lignes de commande" : "Vue d’ensemble"} id="detail-tab-overview" aria-controls="detail-overview" />
           {resource.model === "budget.budget" && <Tab value="expenses" label="Dépenses" />}
+          {resource.model === "projects.project" && can("projects") && <Tab value="lots" label="Lots" id="detail-tab-lots" aria-controls="detail-lots" />}
           {focused && <Tab value="information" label="Informations" />}
           {hasRelated && <Tab value="related" label="Données associées" id="detail-tab-related" aria-controls="detail-related" />}
           <Tab value="tracking" label="Traçabilité" id="detail-tab-tracking" aria-controls="detail-tracking" />
@@ -152,6 +160,8 @@ export function RecordDetailPage({ resource }: { resource: ResourceConfig }) {
         <Stack id="detail-overview" role="tabpanel" aria-labelledby="detail-tab-overview" hidden={section !== "overview"} spacing={2} sx={{ display: section === "overview" ? "flex" : "none" }}>
         {resource.model === "resources.purchaseorder" && <PurchaseOrderLines order={record} revision={revision} />}
         {resource.model === "progress.photo" && <PhotoPreview record={record} />}
+        {resource.model === "reports.reportrun" && <ReportPreview record={record} />}
+        {["documents.document", "documents.documentversion"].includes(resource.model) && <DocumentPreview record={record} isVersion={resource.model === "documents.documentversion"} revision={revision} />}
         {resource.model === "qhse.inspection" && <InspectionChecklist inspection={record} revision={revision} />}
         {resource.model === "resources.material" && <Paper variant="outlined" sx={{ p: 3 }}><Typography variant="h6" mb={2}>Stock par dépôt</Typography>
           {!stock.length && <Typography color="text.secondary">Créez un dépôt, puis enregistrez un mouvement de stock.</Typography>}
@@ -168,9 +178,10 @@ export function RecordDetailPage({ resource }: { resource: ResourceConfig }) {
         }}>{item.label}</Button>)}</Stack></Paper>}
         {typeof record.progress_percent === "number" && <Paper variant="outlined" sx={{ p: 3 }}><Stack direction="row" justifyContent="space-between" mb={1.5}><Typography fontWeight={600}>Avancement de la tâche</Typography><Typography fontWeight={700}>{record.progress_percent} %</Typography></Stack>
           <LinearProgress variant="determinate" value={record.progress_percent} sx={{ height: 10, borderRadius: 5 }} /></Paper>}
-        {!focused && <DetailInformation record={record} model={resource.model} fields={fields} />}
+        {!focused && resource.model !== "reports.reportrun" && <DetailInformation record={record} model={resource.model} fields={fields} />}
         </Stack>
         {focused && <Box hidden={section !== "information"}><DetailInformation record={record} model={resource.model} fields={fields} /></Box>}
+        {resource.model === "projects.project" && can("projects") && section === "lots" && <Box id="detail-lots" role="tabpanel" aria-labelledby="detail-tab-lots"><RelatedRecords model={resource.model} record={record} revision={revision} onlyModel="projects.lot" /></Box>}
         {hasRelated && <Box id="detail-related" role="tabpanel" aria-labelledby="detail-tab-related" hidden={section !== "related"}>{relatedVisited && <RelatedRecords model={resource.model} record={record} revision={revision} />}</Box>}
         <Stack id="detail-tracking" role="tabpanel" aria-labelledby="detail-tab-tracking" hidden={section !== "tracking"} spacing={2} sx={{ display: section === "tracking" ? "flex" : "none" }}>
           <RecordTracking record={record} />

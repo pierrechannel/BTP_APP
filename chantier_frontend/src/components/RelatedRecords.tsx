@@ -22,13 +22,13 @@ const relationModels: Record<string, string> = {
   predecessor: "planning.task", successor: "planning.task", template: "reports.reporttemplate",
 };
 
-export function RelatedRecords({ model, record, revision }: { model: string; record: ApiRecord; revision: number }) {
+export function RelatedRecords({ model, record, revision, onlyModel }: { model: string; record: ApiRecord; revision: number; onlyModel?: string }) {
   const { can } = useWorkspace();
   const { user, tenantId } = useAuth();
   const navigate = useNavigate();
   const links = relatedWorkflows(model).filter((link) => {
     const resource = resourceByModel[link.model];
-    return resource && can(resource.group);
+    return resource && (onlyModel ? link.model === onlyModel : link.model !== "projects.lot") && can(resource.group);
   });
   const [tab, setTab] = useState(0);
   const [rows, setRows] = useState<ApiRecord[]>([]);
@@ -65,11 +65,11 @@ export function RelatedRecords({ model, record, revision }: { model: string; rec
   }));
   columns.push({ field: "open", headerName: "Actions", sortable: false, filterable: false, width: 110, renderCell: ({ row }) => <Button component={RouterLink} to={`${resource.path}/${row.id}`} size="small" aria-label={`Ouvrir ${recordTitle(row)}`} onClick={(event) => event.stopPropagation()}>Ouvrir</Button> });
   return <Paper variant="outlined" sx={{ overflow: "hidden" }}>
-    <Box px={{ xs: 2, sm: 3 }} pt={2.5}><Typography variant="h6">Données associées</Typography>
+    <Box px={{ xs: 2, sm: 3 }} pt={2.5}><Typography variant="h6">{onlyModel ? resource.label : "Données associées"}</Typography>
       <Typography variant="body2" color="text.secondary" mb={1}>Consultez et complétez ce dossier sans perdre son contexte.</Typography>
-      <Tabs value={Math.min(tab, links.length - 1)} onChange={(_, value) => setTab(value)} variant="scrollable" scrollButtons="auto" allowScrollButtonsMobile aria-label="Données associées">
+      {!onlyModel && <Tabs value={Math.min(tab, links.length - 1)} onChange={(_, value) => setTab(value)} variant="scrollable" scrollButtons="auto" allowScrollButtonsMobile aria-label="Données associées">
         {links.map((item) => <Tab key={`${item.model}:${item.field}`} label={item.label ?? (item.model === "workforce.assignment" ? "Affectations du personnel" : item.model === "equipment.equipmentassignment" ? "Affectations du matériel" : resourceByModel[item.model].label)} />)}
-      </Tabs>
+      </Tabs>}
     </Box><Divider />
     <Box p={{ xs: 2, sm: 3 }}>
       <Stack direction="row" justifyContent="space-between" alignItems="center" gap={2} mb={2} flexWrap="wrap">

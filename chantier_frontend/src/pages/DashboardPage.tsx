@@ -16,32 +16,41 @@ import { useWorkspace } from "../state/workspace";
 import { StatusBadge } from "../components/StatusBadge";
 import { RecordEditor } from "../components/RecordEditor";
 import { resourceByPath } from "../resources";
+import { DashboardCharts } from "../components/DashboardCharts";
 
 type Dashboard = {
+  date: string;
   projects: { count: number; active: number; recent: ApiRecord[] } | null;
-  planning: { count: number; completed: number; progress: number; overdue: number; statuses: { status: string; count: number }[]; upcoming: ApiRecord[] } | null;
-  budget: { count: number; pending: number; spent: { currency: string; amount: string }[] } | null;
+  planning: { count: number; completed: number; progress: number; overdue: number; overdue_tasks: ApiRecord[]; statuses: { status: string; count: number }[]; upcoming: ApiRecord[] } | null;
+  budget: { count: number; pending: number; drafts: number; spent: { currency: string; amount: string }[]; monthly_spent: { month: string; currency: string; amount: string | number }[] } | null;
   qhse: { count: number; open: number } | null;
 };
 export function DashboardPage() {
   const { user } = useAuth();
   const { projectId, projects, can } = useWorkspace();
-  const [data, setData] = useState<Dashboard | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [snapshot, setData] = useState<{ projectId: string; data: Dashboard } | null>(null);
+  const [fetching, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [revision, setRevision] = useState(0);
   const [create, setCreate] = useState(false);
+  const data = snapshot?.projectId === projectId ? snapshot.data : null;
+  const loading = fetching || (!data && !error);
   useEffect(() => {
-    const controller = new AbortController(); setLoading(true); setError("");
+    const refresh = () => setRevision((value) => value + 1);
+    window.addEventListener("chantier:data-changed", refresh);
+    return () => window.removeEventListener("chantier:data-changed", refresh);
+  }, []);
+  useEffect(() => {
+    const controller = new AbortController(); setData(null); setLoading(true); setError("");
     api.get<Dashboard>("/projects/dashboard/", { params: projectId ? { project: projectId } : {}, signal: controller.signal })
-      .then(({ data }) => setData(data)).catch((error) => { if (!controller.signal.aborted) setError(errorMessage(error)); })
+      .then(({ data }) => { if (!controller.signal.aborted) setData({ projectId, data }); }).catch((error) => { if (!controller.signal.aborted) { setData(null); setError(errorMessage(error)); } })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
-  }, [projectId, revision]);
+  }, [projectId, revision, can]);
   const cards = [
     { label: "Chantiers actifs", value: data?.projects?.active, detail: `${data?.projects?.count ?? 0} chantier(s) au total`, icon: <ConstructionOutlinedIcon />, path: "/projects", color: "#17644d", bg: "#edf5ee", visible: can("projects") },
     { label: "Tâches terminées", value: data?.planning?.completed, detail: `sur ${data?.planning?.count ?? 0} tâches planifiées`, icon: <TaskAltOutlinedIcon />, path: "/planning", color: "#4882ad", bg: "#edf3fa", visible: can("planning") },
-    { label: "Dépenses à valider", value: data?.budget?.pending, detail: `${data?.budget?.count ?? 0} dépense(s) enregistrée(s)`, icon: <AccountBalanceWalletOutlinedIcon />, path: "/budget", color: "#b17b34", bg: "#fcf3e5", visible: can("budget") },
+    { label: "Dépenses à valider", value: data?.budget?.pending, detail: `${data?.budget?.drafts ?? 0} brouillon(s) à préparer`, icon: <AccountBalanceWalletOutlinedIcon />, path: "/budget/expenses", color: "#b17b34", bg: "#fcf3e5", visible: can("budget") },
     { label: "Incidents ouverts", value: data?.qhse?.open, detail: `${data?.qhse?.count ?? 0} signalement(s) au total`, icon: <HealthAndSafetyOutlinedIcon />, path: "/qhse", color: "#b85959", bg: "#faeeee", visible: can("qhse") },
   ].filter((card) => card.visible);
   const project = projects.find((row) => String(row.id) === projectId);
@@ -53,13 +62,29 @@ export function DashboardPage() {
         {can("projects", "create") && <Button variant="contained" startIcon={<AddIcon />} onClick={() => setCreate(true)}>Nouveau chantier</Button>}</Stack>
     </Stack>
     {error && <Alert severity="error" action={<Button color="inherit" onClick={() => setRevision((value) => value + 1)}>Réessayer</Button>}>{error}</Alert>}
+    {!error && <>
+    {data?.date && <Typography variant="caption" color="text.secondary">Situation au {new Date(`${data.date}T12:00:00`).toLocaleDateString("fr-FR")} · Heure de Bujumbura</Typography>}
     {cards.length > 0 && <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr 1fr", lg: `repeat(${cards.length}, 1fr)` }, gap: 2.5 }}>
       {cards.map((card) => <Paper component={RouterLink} to={card.path} variant="outlined" key={card.label} sx={{ p: { xs: 2, lg: 3 }, textDecoration: "none", color: "inherit", '&:hover': { borderColor: card.color } }}>
         <Stack direction="row" alignItems="center" justifyContent="space-between" mb={2.5}><Box sx={{ display: "flex", p: 1.1, borderRadius: 2, color: card.color, bgcolor: card.bg }}>{card.icon}</Box><ArrowForwardIcon sx={{ fontSize: 16, color: "#aeb8b0" }} /></Stack>
         <Typography variant="body2" color="text.secondary">{card.label}</Typography>{loading ? <Skeleton width={80} height={55} /> : <Typography sx={{ fontSize: 35, fontWeight: 750, letterSpacing: "-.06em", my: .3 }}>{card.value ?? "—"}</Typography>}
-        <Typography variant="caption" color="text.secondary">{card.detail}</Typography>
+        {loading ? <Skeleton width="75%" /> : <Typography variant="caption" color="text.secondary">{card.detail}</Typography>}
       </Paper>)}
     </Box>}
+    {!loading && data && <DashboardCharts statuses={data.planning?.statuses} monthly={data.budget?.monthly_spent} />}
+    {(can("planning") || can("budget") || can("qhse")) && <Paper variant="outlined" sx={{ p: 3 }}>
+      <Typography variant="h6" mb={2}>Alertes à traiter</Typography>
+      {loading ? <Skeleton height={120} /> : <Stack spacing={2}>
+        {Boolean(data?.planning?.overdue) && <Alert severity="warning">{data?.planning?.overdue} tâche(s) en retard. Jusqu’à six tâches sont présentées ci-dessous, en commençant par les plus anciennes.</Alert>}
+        {data?.planning?.overdue_tasks.map((row) => <Stack key={row.id} direction={{ xs: "column", sm: "row" }} justifyContent="space-between" gap={1}>
+          <Box><Link component={RouterLink} to={`/planning/${row.id}`} underline="hover" fontWeight={600}>{String(row.name)}</Link><Typography variant="caption" display="block" color="text.secondary">{String(row.project__name)}</Typography></Box>
+          <Typography variant="body2" color="warning.dark">Échéance : {formatValue(row.planned_end_date, "planned_end_date")}</Typography>
+        </Stack>)}
+        {Boolean(data?.budget?.pending) && <Alert severity="info" action={<Button component={RouterLink} to="/budget/expenses">Consulter</Button>}>{data?.budget?.pending} dépense(s) soumise(s) en attente de validation.</Alert>}
+        {Boolean(data?.qhse?.open) && <Alert severity="warning" action={<Button component={RouterLink} to="/qhse">Consulter</Button>}>{data?.qhse?.open} incident(s) ouvert(s) à suivre.</Alert>}
+        {!data?.planning?.overdue && !data?.budget?.pending && !data?.qhse?.open && <Typography color="text.secondary">Aucune alerte dans les modules auxquels vous avez accès.</Typography>}
+      </Stack>}
+    </Paper>}
     <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: "minmax(0, 1.65fr) minmax(0, 1fr)" }, gap: 3 }}>
       {can("projects") && <Paper variant="outlined" sx={{ overflow: "hidden" }}><Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ p: 3 }}><Box><Typography variant="h6">Vos chantiers</Typography><Typography variant="caption" color="text.secondary">Dernières mises à jour</Typography></Box><Button component={RouterLink} to="/projects" size="small" endIcon={<ArrowForwardIcon />}>Tout voir</Button></Stack><Divider />
         {loading ? <Skeleton height={260} variant="rectangular" /> : !data?.projects?.recent.length ? <Box p={4}><Typography color="text.secondary">Aucun chantier pour le moment. Créez votre premier projet pour commencer.</Typography></Box>
@@ -90,6 +115,7 @@ export function DashboardPage() {
         <Divider sx={{ my: 3 }} /><Button component={RouterLink} to="/budget" endIcon={<ArrowForwardIcon />}>Consulter le budget</Button>
       </Paper>}
     </Box>
-    <RecordEditor resource={resourceByPath["/projects"]} open={create} onClose={() => setCreate(false)} onSaved={() => setRevision((value) => value + 1)} />
+    </>}
+    <RecordEditor resource={resourceByPath["/projects"]} open={create} onClose={() => setCreate(false)} onSaved={() => setCreate(false)} />
   </Stack>;
 }

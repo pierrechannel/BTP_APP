@@ -8,6 +8,7 @@ import { DashboardPage } from "./pages/DashboardPage";
 import { LoginPage } from "./pages/LoginPage";
 import { ResourcePage } from "./pages/ResourcePage";
 import { RecordDetailPage } from "./pages/RecordDetailPage";
+import { ReportsPage } from "./pages/ReportsPage";
 import { allResources, ResourceConfig } from "./resources";
 import { PlatformAuditPage } from "./pages/platform/PlatformAuditPage";
 import { PlatformBillingPage } from "./pages/platform/PlatformBillingPage";
@@ -19,6 +20,7 @@ import { PlatformUsersPage } from "./pages/platform/PlatformUsersPage";
 function ResourceRoute({ resource, detail = false }: { resource: ResourceConfig; detail?: boolean }) {
   const { can } = useWorkspace();
   if (!can(resource.group) && !can(resource.group, "create")) return <Alert severity="info">Votre rôle ne donne pas accès à ce module.</Alert>;
+  if ((!detail && resource.path === "/reports") || (detail && resource.model === "reports.reportrun")) return <ReportsPage detail={detail} />;
   return detail ? <RecordDetailPage resource={resource} /> : <ResourcePage resource={resource} />;
 }
 export function App() {

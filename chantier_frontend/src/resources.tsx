@@ -41,6 +41,7 @@ export type ResourceConfig = {
   immutable?: boolean;
   navigation?: boolean;
   tabLabel?: string;
+  showInTabs?: boolean;
   platformWrite?: boolean;
   actions?: BusinessAction[];
 };
@@ -61,7 +62,7 @@ export const resources: ResourceConfig[] = [
       { label: 'Changer le statut', endpoint: 'transition-status', permission: 'update', field: 'to_status' },
     ] }),
   make('Lots', 'lot', '/lots', '/projects/lots/', 'projects.lot', 'projects', <AccountTreeIcon />,
-    ['code', 'name', 'subcontractor_name'], 'Organisez les corps de métier de chaque chantier.', { projectScoped: true }),
+    ['code', 'name', 'subcontractor_name'], 'Organisez les corps de métier de chaque chantier.', { projectScoped: true, navigation: false, showInTabs: true }),
   make('Planning', 'tâche', '/planning', '/planning/tasks/', 'planning.task', 'planning', <AssignmentIcon />,
     ['name', 'status', 'progress_percent', 'planned_start_date', 'planned_end_date'], 'Coordonnez les tâches et les échéances.',
     { projectScoped: true, actions: [{ label: 'Actualiser l’avancement', endpoint: 'update-progress', permission: 'update', field: 'progress_percent' }] }),
@@ -167,6 +168,7 @@ export const allResources: ResourceConfig[] = [...resources,
       { label: 'Annuler la commande', endpoint: 'transition-status', permission: 'update', payload: { to_status: 'cancelled' }, visible: (row) => ['draft', 'sent'].includes(String(row.status)) },
     ] }),
   sub('resources', 'Lignes de commande', 'ligne de commande', 'order-lines', '/resources/purchase-order-lines/', 'purchaseorderline', ['purchase_order', 'material', 'quantity', 'unit_price', 'currency'], { projectScoped: true,
+    showInTabs: false,
     description: 'Consultez les matériaux commandés. Pour compléter un bon, ouvrez sa fiche et ajoutez une ligne.' }),
   sub('resources', 'Dépôts', 'dépôt', 'locations', '/resources/stock-locations/', 'stocklocation', ['name', 'code', 'project'], { projectScoped: true }),
   sub('resources', 'Mouvements de stock', 'mouvement', 'movements', '/resources/stock-movements/', 'stockmovement', ['material', 'movement_type', 'quantity', 'movement_date'], { immutable: true }),

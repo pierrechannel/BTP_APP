@@ -90,6 +90,13 @@ Puis configurer `DATABASE_URL` avec une URL PostgreSQL.
 
 ## Corrections et contrats de securite
 
+La console plateforme gere les entreprises et comptes via `/api/v1/auth/platform/tenants/`
+et `/api/v1/auth/platform/users/`, reserves aux superadministrateurs. Les acces aux
+entreprises et roles s'administrent via `platform/memberships/` et `platform/roles/`.
+Ces endpoints ne dependent pas de l'entreprise active. Les listes sont paginees cote
+serveur ; les changements sont journalises dans `platform/audit/`. La desactivation
+d'un compte est globale ; suspendre une adhesion ne retire que l'acces a son entreprise.
+
 - Les modifications des comptes utilisateurs globaux sont reservees au superadministrateur.
   Les administrateurs d'entreprise gerent les roles et adhesions de leur entreprise.
 - Les suppressions des ressources metier utilisent `deleted_at`; les references vers une
@@ -136,8 +143,12 @@ de ressources sont refuses explicitement.
 
 ### Rapports et execution
 
-Les rapports generent une synthese JSON par projet (taches, avancement, depenses
-regroupees par devise, incidents). Le parametre optionnel `project` est un code projet.
+Les rapports generent un PDF A4 cote Django avec ReportLab (synthese, planning,
+finances par devise, incidents, actions correctives et observations), avec pagination.
+Le parametre optionnel `project` est un code projet ; `start_date`, `end_date` et
+`observations` permettent de preciser le contenu. Le frontend affiche le PDF et le
+telecharge via l'endpoint authentifie. Les anciens fichiers HTML/JSON restent lisibles
+ou telechargeables ; une nouvelle generation produit toujours un PDF.
 La generation est synchrone en local. En production, utiliser les settings dedies et
 demarrer le worker depuis `chantier_backend`:
 

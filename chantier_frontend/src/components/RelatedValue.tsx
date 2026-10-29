@@ -37,6 +37,6 @@ export function RelatedValue({ model, id }: { model: string; id: unknown }) {
     cache.get(key)!.then((value) => { if (active) setLabel(value); });
     return () => { active = false; };
   }, [model, id, tenantId]);
-  return resource && id && can(resource.group) ? <Link component={RouterLink} to={`${resource.path}/${id}`} underline="hover" onClick={(event) => event.stopPropagation()} noWrap>{label}</Link>
+  return resource && model !== "projects.lot" && id && can(resource.group) ? <Link component={RouterLink} to={`${resource.path}/${id}`} underline="hover" onClick={(event) => event.stopPropagation()} noWrap>{label}</Link>
     : <Typography variant="body2" noWrap>{label}</Typography>;
 }

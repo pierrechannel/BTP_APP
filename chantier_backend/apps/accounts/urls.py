@@ -14,6 +14,10 @@ from apps.accounts.views import (
     UserViewSet,
 )
 from apps.accounts.platform import PlatformOverviewView
+from apps.accounts.platform_management import (
+    PlatformTenantViewSet, PlatformUserViewSet, PlatformMembershipViewSet,
+    PlatformRoleViewSet, PlatformAuditViewSet,
+)
 
 urlpatterns = [
     path("platform/overview/", PlatformOverviewView.as_view(), name="platform-overview"),
@@ -26,6 +30,11 @@ urlpatterns = [
 ]
 
 router = DefaultRouter()
+router.register("platform/tenants", PlatformTenantViewSet, basename="platform-tenant")
+router.register("platform/users", PlatformUserViewSet, basename="platform-user")
+router.register("platform/memberships", PlatformMembershipViewSet, basename="platform-membership")
+router.register("platform/roles", PlatformRoleViewSet, basename="platform-role")
+router.register("platform/audit", PlatformAuditViewSet, basename="platform-audit")
 router.register("tenants", TenantViewSet, basename="tenant")
 router.register("users", UserViewSet, basename="user")
 router.register("roles", RoleViewSet, basename="role")

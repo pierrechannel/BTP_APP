@@ -37,12 +37,18 @@ export function PlatformLayout({ children }: { children: ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const { user, tenantId, setTenantId, logout } = useAuth();
   const [tenants, setTenants] = useState<ApiRecord[]>([]);
+  const [revision, setRevision] = useState(0);
+  useEffect(() => {
+    const refresh = () => setRevision((value) => value + 1);
+    window.addEventListener("chantier:data-changed", refresh);
+    return () => window.removeEventListener("chantier:data-changed", refresh);
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
-    fetchCollection("/auth/tenants/", {}, controller.signal).then(setTenants).catch(() => {});
+    fetchCollection("/auth/platform/tenants/", {}, controller.signal).then(setTenants).catch(() => {});
     return () => controller.abort();
-  }, []);
+  }, [revision]);
 
   const drawerContent = (
     <Stack sx={{ height: "100%" }}>
@@ -106,7 +112,7 @@ export function PlatformLayout({ children }: { children: ReactNode }) {
           <Select size="small" value={tenantId ?? ""} onChange={(event) => setTenantId(event.target.value)} displayEmpty
             inputProps={{ "aria-label": "Entreprise à administrer" }} sx={{ maxWidth: { xs: 140, sm: 220 }, fontSize: 12 }}>
             <MenuItem value="" disabled>Choisir une entreprise</MenuItem>
-            {tenants.map((tenant) => <MenuItem key={tenant.id} value={String(tenant.id)}>{String(tenant.name)}</MenuItem>)}
+            {tenants.map((tenant) => <MenuItem key={tenant.id} value={String(tenant.id)}>{String(tenant.name)}{tenant.is_active ? "" : " (inactive)"}</MenuItem>)}
           </Select>
           <Button
             component={RouterLink}

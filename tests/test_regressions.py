@@ -1,7 +1,7 @@
 from datetime import date
 from uuid import uuid4
-import json
 from unittest.mock import patch
+from pypdf import PdfReader
 
 import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -270,6 +270,36 @@ def test_sync_enforces_domain_permissions_and_rejects_unknown_resource(setup):
     assert task.name != "Forbidden"
 
 
+def test_report_analytics_scope_and_permissions(setup):
+    from django.utils import timezone
+
+    tenant, _, project, tasks, client = setup
+    tasks[0].status = Task.DONE
+    tasks[0].progress_percent = 100
+    tasks[0].save()
+    tasks[1].planned_end_date = date(2000, 1, 1)
+    tasks[1].save()
+    tasks[2].deleted_at = timezone.now()
+    tasks[2].save()
+    other = Tenant.objects.create(name="Secret", slug="analytics-other")
+    secret = Project.objects.create(tenant=other, name="Confidentiel")
+    Task.objects.create(tenant=other, project=secret, name="Secret")
+    endpoint = "/api/v1/reports/templates/summary/"
+    response = client.get(endpoint)
+    assert response.status_code == 200
+    assert response.data["kpis"] == {"projects": 1, "tasks": 2, "completed": 1, "progress": 50, "overdue": 1, "open_incidents": 0}
+    assert len(response.data["projects"]) == 1
+    assert str(response.data["projects"][0]["id"]) == str(project.pk)
+    assert client.get(endpoint, {"project": str(secret.pk)}).data["kpis"]["projects"] == 0
+    assert client.get(endpoint, {"project": "invalid"}).status_code == 400
+    assert client.get(endpoint, {"start_date": "2026-10-31", "end_date": "2026-10-01"}).status_code == 400
+    user, _ = member(tenant, "analytics-reader", {"planning": ["read"]})
+    client.force_authenticate(user)
+    assert client.get(endpoint).status_code == 403
+    client.force_authenticate(None)
+    assert client.get(endpoint).status_code == 401
+
+
 def test_report_generation_and_authenticated_download(setup, settings, tmp_path):
     settings.MEDIA_ROOT = tmp_path
     settings.REPORTS_ASYNC = False
@@ -280,14 +310,128 @@ def test_report_generation_and_authenticated_download(setup, settings, tmp_path)
     assert response.data["status"] == "completed"
     run = ReportRun.objects.get(pk=response.data["id"])
     with run.result_file.open("rb") as report:
-        content = json.load(report)
-    assert content["projects"][0]["code"] == project.code
-    assert content["projects"][0]["tasks"]["count"] == 3
+        assert report.read(5) == b"%PDF-"
+        report.seek(0)
+        reader = PdfReader(report)
+        content = "\n".join(page.extract_text() for page in reader.pages)
+    assert len(reader.pages) >= 1
+    assert project.code in content
+    assert "3 tâches" in content
+    assert "Situation financière" in content
+    assert "Qualité et sécurité" in content
     download = client.get(f"/api/v1/reports/runs/{run.pk}/download/")
     assert download.status_code == 200
+    assert download["Content-Type"] == "application/pdf"
+    assert ".pdf" in download["Content-Disposition"]
     download.close()
     client.force_authenticate(None)
     assert client.get(f"/api/v1/reports/runs/{run.pk}/download/").status_code == 401
+
+
+def test_pdf_report_paginates_without_losing_table_rows(setup, settings, tmp_path):
+    settings.MEDIA_ROOT = tmp_path
+    settings.REPORTS_ASYNC = False
+    tenant, _, project, _, client = setup
+    Task.objects.bulk_create([Task(tenant=tenant, project=project, name=f"Travaux de contrôle {index:03d}") for index in range(90)])
+    template = ReportTemplate.objects.create(tenant=tenant, name="Rapport détaillé")
+    response = client.post(f"/api/v1/reports/templates/{template.pk}/run/", {"parameters": {"project": project.code, "observations": "Fin des observations."}}, format="json")
+    assert response.status_code == 200
+    run = ReportRun.objects.get(pk=response.data["id"])
+    with run.result_file.open("rb") as file:
+        reader = PdfReader(file)
+        assert len(reader.pages) > 1
+        text = "\n".join(page.extract_text() for page in reader.pages)
+        assert "Travaux de contrôle 000" in text
+        assert "Travaux de contrôle 089" in text
+        assert "Fin des observations." in text
+        assert all(f"Page {index}" in page.extract_text() for index, page in enumerate(reader.pages, 1))
+
+
+def test_formatted_report_escapes_content_and_respects_scope(setup, settings, tmp_path):
+    from django.utils import timezone
+
+    settings.MEDIA_ROOT = tmp_path
+    settings.REPORTS_ASYNC = False
+    tenant, _, project, tasks, client = setup
+    project.name = '<script>alert("test")</script>'
+    project.save()
+    tasks[0].name = "Tâche supprimée"
+    tasks[0].deleted_at = timezone.now()
+    tasks[0].save()
+    Project.objects.create(tenant=tenant, name="Chantier hors périmètre", code="OUT")
+    foreign = Tenant.objects.create(name="Autre entreprise", slug="report-other")
+    Project.objects.create(tenant=foreign, name="Chantier confidentiel", code=project.code)
+    template = ReportTemplate.objects.create(tenant=tenant, name="Rapport de suivi")
+    response = client.post(f"/api/v1/reports/templates/{template.pk}/run/", {"parameters": {"project": project.code}}, format="json")
+    assert response.status_code == 200
+    run = ReportRun.objects.get(pk=response.data["id"])
+    with run.result_file.open("rb") as report:
+        content = "\n".join(page.extract_text() for page in PdfReader(report).pages)
+    assert '<script>alert("test")</script>' in content
+    assert "Chantier hors périmètre" not in content
+    assert "Chantier confidentiel" not in content
+    assert "Tâche supprimée" not in content
+    assert "2 tâches" in content
+
+
+@pytest.mark.parametrize("parameters", [
+    {"start_date": "2026-15-01"}, {"start_date": 123},
+    {"start_date": "2026-10-20", "end_date": "2026-10-01"},
+    {"observations": []}, {"project": "UNKNOWN"},
+])
+def test_report_invalid_filters_rejected(setup, parameters):
+    tenant, _, _, _, client = setup
+    template = ReportTemplate.objects.create(tenant=tenant, name="Synthèse")
+    response = client.post(f"/api/v1/reports/templates/{template.pk}/run/", {"parameters": parameters}, format="json")
+    assert response.status_code == 400
+    assert not ReportRun.objects.exists()
+
+
+def test_report_period_finances_and_observations(setup, settings, tmp_path):
+    from datetime import datetime
+    from decimal import Decimal
+    from zoneinfo import ZoneInfo
+    from apps.reports.pdf import build_report_pdf
+    from apps.qhse.models import Incident
+
+    settings.MEDIA_ROOT = tmp_path
+    settings.REPORTS_ASYNC = False
+    tenant, _, project, tasks, client = setup
+    tasks[0].planned_start_date = date(2026, 9, 1)
+    tasks[0].planned_end_date = date(2026, 9, 30)
+    tasks[0].name = "Tâche hors période"
+    tasks[0].save()
+    budget = Budget.objects.create(tenant=tenant, project=project)
+    bif = BudgetLine.objects.create(tenant=tenant, budget=budget, amount=1000, currency="BIF", label="Travaux")
+    BudgetLine.objects.create(tenant=tenant, budget=budget, amount=10, currency="USD", label="Import")
+    for day, amount, status in [(date(2026, 10, 1), 200, Expense.VALIDATED), (date(2026, 9, 30), 700, Expense.PAID), (date(2026, 10, 2), 500, Expense.DRAFT)]:
+        Expense.objects.create(tenant=tenant, budget_line=bif, date=day, amount_excluding_tax=amount, amount_including_tax=amount, currency="BIF", status=status)
+    Incident.objects.create(tenant=tenant, project=project, title="Incident dans la période", occurred_at=datetime(2026, 10, 1, 0, 30, tzinfo=ZoneInfo("Africa/Bujumbura")))
+    template = ReportTemplate.objects.create(tenant=tenant, name="Synthèse")
+    with patch("apps.reports.tasks.build_report_pdf", wraps=build_report_pdf) as render:
+        response = client.post(f"/api/v1/reports/templates/{template.pk}/run/", {"parameters": {"project": project.code, "start_date": "2026-10-01", "end_date": "2026-10-31", "observations": "Décision : renforcer l’équipe."}}, format="json")
+    assert response.status_code == 200
+    context = render.call_args.args[0]
+    row = context["rows"][0]
+    assert row["tasks"]["count"] == 2
+    assert row["incidents"] == 1
+    assert row["finances"] == [
+        {"currency": "BIF", "planned": Decimal("1000"), "spent": Decimal("200"), "remaining": Decimal("800")},
+        {"currency": "USD", "planned": Decimal("10"), "spent": 0, "remaining": Decimal("10")},
+    ]
+    run = ReportRun.objects.get(pk=response.data["id"])
+    with run.result_file.open("rb") as report:
+        content = "\n".join(page.extract_text() for page in PdfReader(report).pages)
+    assert "Décision : renforcer l’équipe." in content
+    assert "Tâche hors période" not in content
+    assert "Situation financière" in content
+    response = client.get("/api/v1/reports/templates/summary/", {"project": str(project.pk), "start_date": "2026-10-01", "end_date": "2026-10-31"})
+    assert response.status_code == 200
+    assert response.data["finances"] == row["finances"]
+    assert response.data["kpis"]["tasks"] == 2
+    assert response.data["kpis"]["open_incidents"] == 1
+    assert len(response.data["monthly_expenses"]) == 1
+    assert response.data["monthly_expenses"][0]["amount"] == Decimal("200")
 
 
 def test_document_download_enforces_acl(setup, settings, tmp_path):
