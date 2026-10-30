@@ -3,6 +3,7 @@ from django.utils import timezone
 from rest_framework.permissions import BasePermission, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework import serializers
 
 from apps.accounts.models import AuditLog, Tenant, User
 from apps.projects.models import Project
@@ -19,6 +20,7 @@ class PlatformOverviewView(APIView):
     permission_classes = [IsAuthenticated, IsPlatformAdministrator]
 
     def get(self, request):
+        days = serializers.ChoiceField(choices=[7, 30, 90]).run_validation(request.query_params.get('days', 30))
         try:
             with connection.cursor() as cursor:
                 cursor.execute("SELECT 1")
@@ -34,6 +36,8 @@ class PlatformOverviewView(APIView):
                 "reports_pending": ReportRun.objects.filter(deleted_at__isnull=True, status="pending").count(),
                 "reports_failed": ReportRun.objects.filter(deleted_at__isnull=True, status="failed").count(),
             }
+            from apps.accounts.platform_analytics import platform_analytics
+            data.update(platform_analytics(int(days)))
         except DatabaseError:
             return Response({"status": "unavailable", "database": "unavailable", "checked_at": timezone.now()}, status=503)
         return Response(data)

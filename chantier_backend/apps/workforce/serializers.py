@@ -6,6 +6,14 @@ from apps.workforce.models import Assignment, Certification, TimeEntry, Worker, 
 
 
 class WorkerSerializer(TenantOwnedModelSerializer):
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        basis = attrs.get("payment_basis", getattr(self.instance, "payment_basis", "hourly"))
+        field = {"daily": "daily_rate", "monthly": "monthly_rate"}.get(basis)
+        if field and attrs.get(field, getattr(self.instance, field, None)) is None:
+            raise serializers.ValidationError({field: "Renseignez le tarif du mode choisi."})
+        return attrs
+
     class Meta:
         model = Worker
         fields = "__all__"

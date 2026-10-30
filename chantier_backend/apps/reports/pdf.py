@@ -5,7 +5,7 @@ from xml.sax.saxutils import escape
 from zoneinfo import ZoneInfo
 
 import reportlab
-from reportlab.graphics.shapes import Drawing, Rect, String
+from reportlab.graphics.shapes import Drawing, Rect, String, PolyLine, Circle
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
@@ -109,6 +109,32 @@ def build_report_pdf(context):
             for task in row["task_details"]], [.34, .20, .17, .17, .12]))
         story.extend([text("2. Situation financière", "Heading3"), table(["Devise", "Budget prévu", "Dépenses TTC", "Solde sur période"], [
             [item["currency"], money(item["planned"]), money(item["spent"]), money(item["remaining"])] for item in row["finances"]], [.15, .28, .28, .29])])
+        expense_details = row.get("expense_details", [])
+        story.extend([text("Détail des dépenses validées et payées", "Heading3"), table(
+            ["Date", "Fournisseur / budget", "Lignes", "HT", "Taxe", "TTC / devise"], [
+                [date_label(item.date), f"{item.supplier_name}\n{item.budget_line.label}",
+                 "\n".join(f"{line['label']} : {line['quantity']} × {line['unit_price']}" for line in item.details) or "Sans détail",
+                 money(item.amount_excluding_tax), money(item.tax_amount), f"{money(item.amount_including_tax)} {item.currency}"]
+                for item in expense_details], [.12, .23, .23, .12, .12, .18])])
+        for currency in sorted({item.currency for item in expense_details}):
+            monthly = {}
+            for item in expense_details:
+                if item.currency == currency:
+                    month = item.date.strftime("%Y-%m")
+                    monthly[month] = monthly.get(month, 0) + item.amount_including_tax
+            points = sorted(monthly.items())
+            maximum = max(float(amount) for _, amount in points) or 1
+            curve = Drawing(doc.width, 125)
+            coordinates = []
+            for index, (month, amount) in enumerate(points):
+                x = 15 + index * (doc.width - 45) / max(len(points) - 1, 1)
+                y = 25 + float(amount) / maximum * 70
+                coordinates.extend([x, y])
+                curve.add(Circle(x, y, 3, fillColor=BRAND, strokeColor=None))
+                curve.add(String(x, 10, month, fontName="ReportVera", fontSize=7))
+            if len(points) > 1:
+                curve.add(PolyLine(coordinates, strokeColor=BRAND, strokeWidth=2))
+            story.extend([text(f"Évolution mensuelle des dépenses TTC — {currency}", "Heading3"), curve])
         story.extend([text("3. Qualité et sécurité", "Heading3"), table(["Incident", "Date", "Statut", "Observations"], [
             [item.title, date_label(item.occurred_at.astimezone(ZoneInfo("Africa/Bujumbura"))), STATUS.get(item.status, item.status), item.description or "—"] for item in row["incident_details"]], [.27, .16, .18, .39])])
         story.extend([text("Actions correctives", "Heading3"), table(["Action", "Incident", "Échéance", "État"], [

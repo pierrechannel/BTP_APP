@@ -55,6 +55,7 @@ def generate_report(run_id):
                 spent = dict(expenses.values("currency").annotate(total=Sum("amount_including_tax")).values_list("currency", "total"))
                 finances = [{"currency": currency, "planned": planned.get(currency, 0), "spent": spent.get(currency, 0), "remaining": planned.get(currency, 0) - spent.get(currency, 0)} for currency in sorted(set(planned) | set(spent))]
                 rows.append({
+                    "expense_details": list(expenses.select_related("budget_line").order_by("date", "created_at")),
                     "finances": finances,
                     "completed": tasks.filter(status=Task.DONE).count(),
                     "overdue": sum(task.is_overdue for task in task_details),

@@ -25,6 +25,7 @@ import { DetailInformation, RecordTracking } from "../components/DetailInformati
 import RefreshIcon from "@mui/icons-material/Refresh";
 import { BudgetWorkspace } from "../components/BudgetWorkspace";
 import { RelatedValue } from "../components/RelatedValue";
+import { BusinessExports } from "../components/BusinessExports";
 
 const transitions: Record<string, Array<[string, string]>> = {
   study: [["preparation", "Préparation"]], preparation: [["in_progress", "Démarrer le chantier"], ["suspended", "Suspendre"]],
@@ -127,6 +128,7 @@ export function RecordDetailPage({ resource }: { resource: ResourceConfig }) {
   const hasRelated = resource.model !== "budget.budget" && relatedWorkflows(resource.model).some((link) => resourceByModel[link.model] && can(resourceByModel[link.model].group));
 
   return <Stack spacing={2}>
+    <BusinessExports model={resource.model} id={id} />
     <Breadcrumbs><Link component={RouterLink} to="/" underline="hover">Vue d’ensemble</Link>
       <Link component={RouterLink} to={resource.path} underline="hover">{resource.label}</Link><Typography color="text.primary">Fiche</Typography></Breadcrumbs>
     {loading ? <><Skeleton width="60%" height={70} /><Skeleton variant="rounded" height={320} /></> : <>

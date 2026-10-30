@@ -9,6 +9,7 @@ import { FieldInfo, fieldLabel, formatValue } from "../api/workspace";
 import { RelatedValue } from "./RelatedValue";
 import { RolePermissions } from "./RolePermissions";
 import { StatusBadge } from "./StatusBadge";
+import { ExpenseDetailsView } from "./ExpenseDetails";
 
 const hidden = new Set(["id", "tenant", "deleted_at", "created_by", "updated_by", "version", "created_at", "updated_at", "file", "image", "result_file", "checksum", "push_token"]);
 const sections = [
@@ -40,6 +41,7 @@ export function DetailInformation({ record, model, fields }: { record: ApiRecord
             <Typography component="dt" variant="caption" color="text.secondary" mb={.75}>{fieldLabel(name)}</Typography>
             <Box component="dd" m={0} sx={{ overflowWrap: "anywhere" }}>
               {name === "permissions" && model === "accounts.role" ? <RolePermissions value={JSON.stringify(value)} onChange={() => {}} readOnly />
+                : name === 'details' && model === 'budget.expense' && Array.isArray(value) ? <ExpenseDetailsView rows={value} />
                 : fields[name]?.related_model ? <RelatedValue model={fields[name].related_model!} id={value} />
                 : ["status", "state"].includes(name) ? <StatusBadge value={value} />
                 : name === "items" && Array.isArray(value) ? <Stack spacing={1}>{value.map((item, index) => <Typography variant="body2" key={index}>{index + 1}. {typeof item === "string" ? item : String(item?.label ?? "")}</Typography>)}</Stack>

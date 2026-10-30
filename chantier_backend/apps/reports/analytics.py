@@ -10,6 +10,8 @@ from apps.budget.models import BudgetLine, Expense
 from apps.planning.models import Task
 from apps.projects.models import Project
 from apps.qhse.models import Incident
+from apps.workforce.models import TimeEntry
+from apps.reports.models import ReportRun
 
 
 class AnalyticsFilters(serializers.Serializer):
@@ -34,12 +36,23 @@ def report_analytics(tenant_id, params):
     expenses = Expense.objects.filter(tenant_id=tenant_id, budget_line__budget__project__in=projects,
         deleted_at__isnull=True, budget_line__deleted_at__isnull=True, budget_line__budget__deleted_at__isnull=True,
         status__in=[Expense.VALIDATED, Expense.PAID])
+    all_expenses = Expense.objects.filter(tenant_id=tenant_id, budget_line__budget__project__in=projects,
+        deleted_at__isnull=True, budget_line__deleted_at__isnull=True, budget_line__budget__deleted_at__isnull=True)
+    attendance = TimeEntry.objects.filter(tenant_id=tenant_id, project__in=projects,
+        deleted_at__isnull=True, worker__deleted_at__isnull=True)
+    runs = ReportRun.objects.filter(tenant_id=tenant_id, deleted_at__isnull=True, archived_at__isnull=True, template__deleted_at__isnull=True)
+    if values.get('project'):
+        code = projects.values_list('code', flat=True).first()
+        runs = runs.filter(parameters__project=code) if code else runs.none()
     incidents = Incident.objects.filter(tenant_id=tenant_id, project__in=projects, deleted_at__isnull=True)
     for key, lookup in (("start_date", "gte"), ("end_date", "lte")):
         if key in values:
             boundary = values[key]
             expenses = expenses.filter(**{f"date__{lookup}": boundary})
+            all_expenses = all_expenses.filter(**{f'date__{lookup}': boundary})
+            attendance = attendance.filter(**{f'work_date__{lookup}': boundary})
             instant = datetime.combine(boundary, time.min, tzinfo=ZoneInfo("Africa/Bujumbura"))
+            runs = runs.filter(**{'created_at__gte' if lookup == 'gte' else 'created_at__lt': instant if lookup == 'gte' else instant + timedelta(days=1)})
             incidents = incidents.filter(**{"occurred_at__gte" if lookup == "gte" else "occurred_at__lt": instant if lookup == "gte" else instant + timedelta(days=1)})
             field = "planned_end_date" if lookup == "gte" else "planned_start_date"
             tasks = tasks.filter(Q(**{f"{field}__{lookup}": boundary}) | Q(**{f"{field}__isnull": True}))
@@ -71,4 +84,15 @@ def report_analytics(tenant_id, params):
             "overdue": overdue.count(), "open_incidents": incidents.exclude(status=Incident.CLOSED).count()},
         "statuses": list(tasks.values("status").annotate(count=Count("id")).order_by("status")),
         "finances": finance_rows(budget, expenses), "monthly_expenses": monthly, "projects": project_rows,
+        'attendance': attendance.aggregate(workers=Count('worker_id', distinct=True), entries=Count('id'),
+            normal_hours=Sum('normal_hours'), overtime_hours=Sum('overtime_hours'), validated=Count('id', filter=Q(is_validated=True))),
+        'expense_statuses': list(all_expenses.values('status').annotate(count=Count('id')).order_by('status')),
+        'spending_categories': list(expenses.values('budget_line__category', 'currency').annotate(amount=Sum('amount_including_tax')).order_by('-amount')),
+        'recent_expenses': list(all_expenses.order_by('-date', '-created_at').values('id', 'date', 'supplier_name',
+            'budget_line__label', 'budget_line__budget__project__name', 'amount_including_tax', 'currency', 'status', 'archived_at')[:8]),
+        'attention_tasks': list(overdue.select_related('project').order_by('planned_end_date', 'name').values(
+            'id', 'name', 'project__name', 'planned_end_date', 'progress_percent', 'status', 'archived_at')[:8]),
+        'report_statuses': list(runs.values('status').annotate(count=Count('id')).order_by('status')),
+        'monthly_reports': list(runs.annotate(month=TruncMonth('created_at', tzinfo=ZoneInfo('Africa/Bujumbura')))
+            .values('month', 'status').annotate(count=Count('id')).order_by('month', 'status')),
     }

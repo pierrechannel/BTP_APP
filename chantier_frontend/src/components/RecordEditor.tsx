@@ -11,13 +11,26 @@ import { formFieldOrder, formHints, orderLineTotal, relationMatches, visibleForm
 import { RolePermissions } from "./RolePermissions";
 import { formatValue } from "../api/workspace";
 import { useAuth } from "../state/auth";
+import { ExpenseDetails, ExpenseDetailsView } from "./ExpenseDetails";
+import { BusinessFormLayout, businessDialogSx } from "./BusinessFormLayout";
+import { AttendanceSheetDialog } from "./AttendanceSheetDialog";
 
-export function RecordEditor({ resource, record, open, onClose, onSaved, defaults = {}, fixedFields = [], compact = false, allowRepeat = false }: {
+export function RecordEditor(props: Parameters<typeof MetadataRecordEditor>[0]) {
+  if (props.resource.model === 'workforce.timeentry' && !props.record && !props.defaults?.worker && !props.defaults?.task && !props.fixedFields?.includes('worker')) {
+    return <AttendanceSheetDialog open={props.open} onClose={props.onClose} onSaved={props.onSaved} initialProject={props.defaults?.project ? String(props.defaults.project) : undefined} initialDate={props.defaults?.work_date ? String(props.defaults.work_date) : undefined} fixedProject={props.fixedFields?.includes('project')} />;
+  }
+  return <MetadataRecordEditor {...props} />;
+}
+
+function MetadataRecordEditor({ resource, record, open, onClose, onSaved, defaults = {}, fixedFields = [], compact = false, allowRepeat = false }: {
   resource: ResourceConfig; record?: ApiRecord; open: boolean; onClose: () => void;
   onSaved: (record: ApiRecord) => void; defaults?: Record<string, unknown>; fixedFields?: string[];
   compact?: boolean; allowRepeat?: boolean;
 }) {
   const { projectId } = useWorkspace();
+  const expenseForm = resource.model === "budget.expense";
+  const timeForm = resource.model === "workforce.timeentry";
+  const businessForm = expenseForm || timeForm;
   const { refreshMe } = useAuth();
   const [fields, setFields] = useState<Record<string, FieldInfo>>({});
   const [values, setValues] = useState<Record<string, unknown>>({});
@@ -44,6 +57,7 @@ export function RecordEditor({ resource, record, open, onClose, onSaved, default
         let value: unknown = record?.[name] ?? defaults[name] ?? field.default ?? (name === "project" ? projectId : "");
         if (name === "client_mutation_id" && !value) value = crypto.randomUUID();
         if (name === "status" && record && resource.model === "projects.project") value = undefined;
+        if (field.type === "json" && name === 'details' && resource.model === 'budget.expense' && !value) value = [];
         if (field.type === "json") value = name === "items" && Array.isArray(value)
           ? value.map((item) => typeof item === "string" ? item : item.label).join("\n")
           : typeof value === "object" ? JSON.stringify(value, null, 2) : value || (name === "items" ? "" : "{}");
@@ -110,6 +124,9 @@ export function RecordEditor({ resource, record, open, onClose, onSaved, default
         payload.mime_type = payload.file.type;
         payload.size = payload.file.size;
       }
+      if (resource.model === 'budget.expense' && Array.isArray(payload.details) && payload.details.length) {
+        payload.amount_excluding_tax = payload.details.reduce((total, row) => total + Number(row.quantity) * Number(row.unit_price), 0).toFixed(2);
+      }
       const hasFiles = Object.values(payload).some((value) => value instanceof File);
       const body = hasFiles ? Object.entries(payload).reduce((form, [key, value]) => {
         if (value !== null) form.append(key, value instanceof File ? value : String(value));
@@ -132,6 +149,10 @@ export function RecordEditor({ resource, record, open, onClose, onSaved, default
   };
   const update = (name: string, value: unknown) => setValues((current) => {
     const next = { ...current, [name]: value };
+    if (resource.model === 'budget.expense' && name === 'details') {
+      const rows = JSON.parse(String(value || '[]'));
+      if (Array.isArray(rows) && rows.length) next.amount_excluding_tax = rows.reduce((total, row) => total + Number(row.quantity) * Number(row.unit_price), 0).toFixed(2);
+    }
     const dependencies: Record<string, string[]> = { project: ["task", "lot", "daily_report", "parent"], equipment: ["maintenance_plan"] };
     for (const dependent of dependencies[name] ?? []) if (!fixedFields.includes(dependent)) next[dependent] = "";
     if (name === "material" && resource.model === "resources.purchaseorderline" && !record) {
@@ -158,56 +179,62 @@ export function RecordEditor({ resource, record, open, onClose, onSaved, default
     try { linePreview = `${formatValue(orderLineTotal(values), "amount")} ${values.currency ?? "BIF"}`; } catch { /* Invalid values are reported by validation. */ }
   }
 
-  return <Dialog open={open} onClose={saving ? undefined : onClose} fullWidth maxWidth={compact ? "sm" : "md"}>
+  const renderField = (name: string, field: FieldInfo) => {
+    const stockRequired = resource.model === "resources.stockmovement" && ["source_location", "target_location"].includes(name);
+    const common = { label: name === "items" ? "Points de contrôle (un par ligne)" : fieldLabel(name), required: stockRequired || (!record && field.required), error: Boolean(fieldErrors[name]), helperText: fieldErrors[name], fullWidth: true, size: "small" as const };
+    const value = values[name] ?? "";
+    if (name === 'details' && resource.model === 'budget.expense') return <ExpenseDetails key={name} disabled={saving} value={String(value)} onChange={(value) => update(name, value)} />;
+    if (name === "permissions" && resource.model === "accounts.role") return <RolePermissions key={name} value={String(value)} onChange={(value) => update(name, value)} />;
+    if (field.related_model) return <Autocomplete key={name} options={(relations[name] ?? []).filter((row) => relationMatches(name, row, values))}
+      value={(relations[name] ?? []).find((row) => String(row.id) === String(value)) ?? null}
+      getOptionLabel={recordTitle} isOptionEqualToValue={(a, b) => a.id === b.id} disabled={saving || lookupsFailed.includes(name)}
+      onChange={(_, row) => update(name, row?.id ?? "")}
+      noOptionsText="Aucun élément disponible" renderInput={(params) => <TextField {...params} {...common} />} />;
+    if (field.type === "boolean") return <FormControlLabel key={name} control={<Checkbox checked={Boolean(value)} onChange={(_, checked) => update(name, checked)} />} label={fieldLabel(name)} />;
+    if (["file upload", "image upload"].includes(field.type)) return <Box key={name} sx={{ gridColumn: "1 / -1", p: 2, border: "1px dashed", borderColor: "divider", borderRadius: 2 }}>
+      <Typography variant="subtitle2" gutterBottom>{fieldLabel(name)}</Typography>
+      <input aria-label={fieldLabel(name)} type="file" required={!record && field.required} onChange={(event) => {
+        const file = event.target.files?.[0]; update(name, file);
+        if (file && name === "file") update("original_name", file.name);
+      }} />{fieldErrors[name] && <Typography color="error">{fieldErrors[name]}</Typography>}
+    </Box>;
+    if (field.choices?.length) return <TextField key={name} {...common} select value={value} onChange={(event) => update(name, event.target.value)}>
+      {!field.required && <MenuItem value="">Aucun</MenuItem>}
+      {field.choices.map((choice) => <MenuItem key={choice.value} value={choice.value}>{statusLabels[String(choice.value)] ?? choice.display_name}</MenuItem>)}
+    </TextField>;
+    const multiline = field.multiline || field.type === "json";
+    const type = field.type === "date" ? "date" : field.type === "datetime" ? "datetime-local"
+      : ["integer", "decimal", "float"].includes(field.type) ? "number" : field.type === "email" ? "email" : "text";
+    return <TextField key={name} {...common} required={common.required && !(resource.model === 'budget.expense' && name === 'amount_excluding_tax' && String(values.details ?? '[]').length > 2)} type={type} value={value} multiline={multiline} minRows={multiline ? 3 : undefined} disabled={saving || (name === "currency" && ["budget.budgetline", "budget.expense"].includes(resource.model))}
+      sx={multiline ? { gridColumn: "1 / -1" } : undefined} onChange={(event) => update(name, event.target.value)}
+      InputProps={{ readOnly: expenseForm && name === 'amount_excluding_tax' && String(values.details ?? '[]').length > 2 }}
+      InputLabelProps={{ shrink: true }} inputProps={{ maxLength: field.max_length, min: field.min_value, max: field.max_value, step: field.type === "integer" ? 1 : "any" }} />;
+  };
+  const controls = Object.fromEntries(Object.entries(fields).filter(([name]) => !fixedFields.includes(name) && visibleFormField(resource.model, name, values) && !(record && name === "status" && resource.model === "projects.project") && !["mime_type", "size", "checksum"].includes(name)).map(([name, field]) => [name, renderField(name, field)]));
+
+  return <Dialog open={open} onClose={saving ? undefined : onClose} fullWidth maxWidth={businessForm ? false : compact ? "sm" : "md"} PaperProps={businessForm ? { sx: businessDialogSx } : undefined} sx={businessForm ? { '& .MuiBackdrop-root': { bgcolor: 'rgba(35,45,60,.24)', backdropFilter: 'none' } } : undefined}>
     <Box component="form" onSubmit={submit} sx={{ display: "flex", flexDirection: "column", minHeight: 0, maxHeight: "90dvh" }} onInvalidCapture={(event) => {
       event.preventDefault(); setFormTab(0); setError("Veuillez compléter les champs obligatoires et vérifier les valeurs saisies.");
       const input = event.target as HTMLInputElement; setTimeout(() => input.focus(), 0);
     }}>
-      <DialogTitle sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
-        <span>{record ? "Modifier" : "Créer"} · {resource.singular}</span><IconButton type="button" aria-label="Fermer le formulaire" disabled={saving} onClick={onClose} size="small" sx={{ color: "inherit" }}><CloseIcon fontSize="small" /></IconButton>
+      <DialogTitle sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0, ...(businessForm ? { px: 3.5, py: 2.5, borderBottom: '1px solid #e2e5e9' } : {}) }}>
+        {businessForm ? <Box><Typography component="span" display="block" fontSize={20} fontWeight={750}>{expenseForm ? (record ? 'Modifier la dépense' : 'Nouvelle dépense') : 'Pointage du personnel'}</Typography><Typography component="span" display="block" fontSize={13} color="#66707d" mt={.35}>{expenseForm ? `${record ? statusLabels[String(record.status)] ?? 'Dépense' : 'Brouillon'} · Renseignez les postes et montants de la dépense` : 'Renseignez les heures du collaborateur pour la journée'}</Typography></Box> : <span>{record ? "Modifier" : "Créer"} · {resource.singular}</span>}<IconButton type="button" aria-label="Fermer le formulaire" disabled={saving} onClick={onClose} size="small" sx={{ color: "inherit" }}><CloseIcon fontSize="small" /></IconButton>
       </DialogTitle>
-      <DialogContent sx={{ overflowY: "auto", minHeight: 0 }}>
-        {!compact && <Tabs value={formTab} onChange={(_, value) => setFormTab(value)} aria-label="Étapes du formulaire" sx={{ mb: 2.5 }}><Tab label="Informations" id="record-form-information" aria-controls="record-form-fields" /><Tab label="Récapitulatif" id="record-form-summary" aria-controls="record-form-review" disabled={loading} /></Tabs>}
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>Les champs marqués d’un astérisque sont obligatoires.</Typography>
-        {formHints[resource.model] && <Alert severity="info" sx={{ mb: 2 }}>{formHints[resource.model]}</Alert>}
+      <DialogContent sx={{ overflowY: "auto", minHeight: 0, ...(businessForm ? { px: { xs: 2, sm: 3.5 }, py: '24px !important', minHeight: { sm: 420 } } : {}) }}>
+        {!compact && !businessForm && <Tabs value={formTab} onChange={(_, value) => setFormTab(value)} aria-label="Étapes du formulaire" sx={{ mb: 2.5 }}><Tab label="Informations" id="record-form-information" aria-controls="record-form-fields" /><Tab label="Récapitulatif" id="record-form-summary" aria-controls="record-form-review" disabled={loading} /></Tabs>}
+        {!businessForm && <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>Les champs marqués d’un astérisque sont obligatoires.</Typography>}
+        {!businessForm && formHints[resource.model] && <Alert severity="info" sx={{ mb: 2 }}>{formHints[resource.model]}</Alert>}
         {fixedFields.length > 0 && <Typography variant="caption" color="primary.main" component="p" mb={2}>Cet élément est rattaché à la fiche ouverte.</Typography>}
         {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
         {lookupsFailed.length > 0 && <Alert severity="warning" sx={{ mb: 2 }}>Certaines listes sont indisponibles : {lookupsFailed.map(fieldLabel).join(", ")}. Vérifiez vos accès et réessayez.</Alert>}
         {loading ? <Stack alignItems="center" sx={{ py: 6 }}><CircularProgress /></Stack> :
-          <Box id="record-form-fields" role="tabpanel" aria-labelledby="record-form-information" hidden={formTab !== 0} sx={{ display: formTab === 0 ? "grid" : "none", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" }, gap: 2.5 }}>
-            {Object.entries(fields).filter(([name]) => !fixedFields.includes(name) && visibleFormField(resource.model, name, values) && !(record && name === "status" && resource.model === "projects.project") && !["mime_type", "size", "checksum"].includes(name)).map(([name, field]) => {
-              const stockRequired = resource.model === "resources.stockmovement" && ["source_location", "target_location"].includes(name);
-              const common = { label: name === "items" ? "Points de contrôle (un par ligne)" : fieldLabel(name), required: stockRequired || (!record && field.required), error: Boolean(fieldErrors[name]), helperText: fieldErrors[name], fullWidth: true, size: "small" as const };
-              const value = values[name] ?? "";
-              if (name === "permissions" && resource.model === "accounts.role") return <RolePermissions key={name} value={String(value)} onChange={(value) => update(name, value)} />;
-              if (field.related_model) return <Autocomplete key={name} options={(relations[name] ?? []).filter((row) => relationMatches(name, row, values))}
-                value={(relations[name] ?? []).find((row) => String(row.id) === String(value)) ?? null}
-                getOptionLabel={recordTitle} isOptionEqualToValue={(a, b) => a.id === b.id} disabled={saving || lookupsFailed.includes(name)}
-                onChange={(_, row) => update(name, row?.id ?? "")}
-                noOptionsText="Aucun élément disponible" renderInput={(params) => <TextField {...params} {...common} />} />;
-              if (field.type === "boolean") return <FormControlLabel key={name} control={<Checkbox checked={Boolean(value)} onChange={(_, checked) => update(name, checked)} />} label={fieldLabel(name)} />;
-              if (["file upload", "image upload"].includes(field.type)) return <Box key={name} sx={{ gridColumn: "1 / -1", p: 2, border: "1px dashed", borderColor: "divider", borderRadius: 2 }}>
-                <Typography variant="subtitle2" gutterBottom>{fieldLabel(name)}</Typography>
-                <input aria-label={fieldLabel(name)} type="file" required={!record && field.required} onChange={(event) => {
-                  const file = event.target.files?.[0]; update(name, file);
-                  if (file && name === "file") update("original_name", file.name);
-                }} />{fieldErrors[name] && <Typography color="error">{fieldErrors[name]}</Typography>}
-              </Box>;
-              if (field.choices?.length) return <TextField key={name} {...common} select value={value} onChange={(event) => update(name, event.target.value)}>
-                {!field.required && <MenuItem value="">Aucun</MenuItem>}
-                {field.choices.map((choice) => <MenuItem key={choice.value} value={choice.value}>{statusLabels[String(choice.value)] ?? choice.display_name}</MenuItem>)}
-              </TextField>;
-              const multiline = field.multiline || field.type === "json";
-              const type = field.type === "date" ? "date" : field.type === "datetime" ? "datetime-local"
-                : ["integer", "decimal", "float"].includes(field.type) ? "number" : field.type === "email" ? "email" : "text";
-              return <TextField key={name} {...common} type={type} value={value} multiline={multiline} minRows={multiline ? 3 : undefined} disabled={name === "currency" && ["budget.budgetline", "budget.expense"].includes(resource.model)}
-                sx={multiline ? { gridColumn: "1 / -1" } : undefined} onChange={(event) => update(name, event.target.value)}
-                InputLabelProps={{ shrink: true }} inputProps={{ maxLength: field.max_length, min: field.min_value, max: field.max_value, step: field.type === "integer" ? 1 : "any" }} />;
-            })}
+          <Box id="record-form-fields" role={businessForm ? undefined : 'tabpanel'} aria-labelledby={businessForm ? undefined : 'record-form-information'} hidden={formTab !== 0} sx={{ display: formTab === 0 ? "grid" : "none", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" }, gap: 2.5 }}>
+            {businessForm ? <Box sx={{ gridColumn: "1 / -1" }}><BusinessFormLayout model={resource.model} controls={controls} values={values} relations={relations} /></Box> : Object.values(controls)}
           </Box>}
         {!loading && formTab === 1 && <Box id="record-form-review" role="tabpanel" aria-labelledby="record-form-summary" sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" }, gap: 2 }}>
           {Object.entries(fields).filter(([name]) => !fixedFields.includes(name) && visibleFormField(resource.model, name, values) && !["mime_type", "size", "checksum"].includes(name)).map(([name, field]) => {
             const value = values[name];
+            if (name === 'details' && resource.model === 'budget.expense') return <Box key={name} sx={{ gridColumn: '1 / -1' }}><ExpenseDetailsView rows={JSON.parse(String(value || '[]'))} /></Box>;
             const related = field.related_model ? relations[name]?.find((row) => String(row.id) === String(value)) : undefined;
             const label = related ? recordTitle(related) : value instanceof File ? value.name : field.type === "json" ? "Données structurées renseignées" : formatValue(value, name);
             return <Box key={name} sx={{ p: 1.5, bgcolor: "#f3f7f1", borderRadius: 1, minWidth: 0 }}><Typography variant="caption" color="text.secondary">{fieldLabel(name)}</Typography><Typography variant="body2" sx={{ mt: .5, overflowWrap: "anywhere", whiteSpace: "pre-wrap" }}>{label}</Typography></Box>;
@@ -215,9 +242,10 @@ export function RecordEditor({ resource, record, open, onClose, onSaved, default
         </Box>}
         {!loading && linePreview && <PaperTotal value={linePreview} />}
       </DialogContent>
-      <DialogActions sx={{ flexShrink: 0 }}><Button onClick={onClose} disabled={saving}>Annuler</Button>
+      <DialogActions sx={{ flexShrink: 0, ...(businessForm ? { px: 3.5, py: 2, bgcolor: '#f9fafb', borderTop: '1px solid #e2e5e9', flexWrap: 'wrap', gap: 1 } : {}) }}><Button onClick={onClose} disabled={saving} sx={businessForm ? { mr: 'auto', color: '#626c78' } : undefined}>Annuler</Button>
+        {timeForm && <Typography fontSize={12} color="#66707d" sx={{ mr: 1 }}>{values.worker ? '1 collaborateur renseigné' : 'Aucun collaborateur sélectionné'}</Typography>}
         {allowRepeat && !record && <Button type="submit" data-continue="true" disabled={loading || saving} variant="outlined">Enregistrer et ajouter une autre</Button>}
-        <Button variant="contained" type="submit" disabled={loading || saving || !Object.keys(fields).length}>{saving ? "Enregistrement…" : "Enregistrer"}</Button>
+        <Button variant="contained" type="submit" disabled={loading || saving || !Object.keys(fields).length}>{saving ? "Enregistrement…" : expenseForm ? (record ? 'Enregistrer les modifications' : 'Enregistrer le brouillon') : timeForm ? 'Enregistrer le pointage' : "Enregistrer"}</Button>
       </DialogActions>
     </Box>
   </Dialog>;

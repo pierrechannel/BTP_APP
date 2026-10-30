@@ -27,6 +27,7 @@ class Expense(TenantOwnedModel):
     budget_line = models.ForeignKey(BudgetLine, on_delete=models.PROTECT, related_name="expenses")
     date = models.DateField()
     supplier_name = models.CharField(max_length=255, blank=True)
+    details = models.JSONField("Lignes de dépense", default=list, blank=True)
     amount_excluding_tax = models.DecimalField(max_digits=18, decimal_places=2)
     tax_amount = models.DecimalField(max_digits=18, decimal_places=2, default=0)
     amount_including_tax = models.DecimalField(max_digits=18, decimal_places=2)

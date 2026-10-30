@@ -73,7 +73,35 @@ class FinancialTotalsMixin:
 
 
 class ExpenseSerializer(FinancialTotalsMixin, TenantOwnedModelSerializer):
+    amount_excluding_tax = serializers.DecimalField(max_digits=18, decimal_places=2, required=False)
+    def validate_details(self, value):
+        if not isinstance(value, list) or len(value) > 500:
+            raise serializers.ValidationError("Fournissez au maximum 500 lignes.")
+        cleaned = []
+        for row in value:
+            try:
+                label = str(row["label"]).strip()
+                quantity = Decimal(str(row["quantity"]))
+                price = Decimal(str(row["unit_price"]))
+                if not label or len(label) > 255 or not quantity.is_finite() or not price.is_finite() or quantity <= 0 or price < 0:
+                    raise ValueError()
+                if quantity > Decimal("999999999") or price > Decimal("999999999"):
+                    raise ValueError()
+                if quantity.as_tuple().exponent < -3 or price.as_tuple().exponent < -2:
+                    raise ValueError()
+                cleaned.append({"label": label, "quantity": str(quantity), "unit_price": str(price)})
+            except (KeyError, TypeError, ValueError, ArithmeticError):
+                raise serializers.ValidationError("Chaque ligne exige un libellé, une quantité positive (3 décimales maximum) et un prix positif ou nul (2 décimales maximum).")
+        return cleaned
+
     def validate(self, attrs):
+        details = attrs.get("details", getattr(self.instance, "details", []))
+        if details:
+            attrs["amount_excluding_tax"] = sum((Decimal(row["quantity"]) * Decimal(row["unit_price"]) for row in details), Decimal("0")).quantize(Decimal("0.01"))
+            if attrs["amount_excluding_tax"] >= Decimal("10000000000000000"):
+                raise serializers.ValidationError({"details": "Le total dépasse le montant autorisé."})
+        elif not self.instance and "amount_excluding_tax" not in attrs:
+            raise serializers.ValidationError({"amount_excluding_tax": "Renseignez un montant ou des lignes de détail."})
         attrs = super().validate(attrs)
         line = attrs.get("budget_line", getattr(self.instance, "budget_line", None))
         currency = attrs.get("currency", getattr(self.instance, "currency", None))

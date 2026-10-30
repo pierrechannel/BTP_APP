@@ -45,6 +45,11 @@ class SupplierViewSet(TenantModelViewSet):
 
 
 class PurchaseOrderViewSet(TenantModelViewSet):
+    @action(detail=True, methods=["get"])
+    def pdf(self, request, pk=None):
+        from apps.reports.business_pdf import purchase_order_pdf
+        return purchase_order_pdf(request, self.get_object())
+
     queryset = PurchaseOrder.objects.select_related("project", "supplier", "tenant")
     serializer_class = PurchaseOrderSerializer
     filterset_fields = ["project", "supplier", "status", "ordered_at"]

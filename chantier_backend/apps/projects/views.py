@@ -29,7 +29,8 @@ class ProjectViewSet(TenantModelViewSet):
 
     def get_queryset(self):
         return (
-            Project.objects.filter(tenant_id=self.request.tenant_id, deleted_at__isnull=True)
+            Project.objects.filter(tenant_id=self.request.tenant_id, deleted_at__isnull=True,
+                archived_at__isnull=not (self.action == "restore" or (self.request.method in {"GET", "HEAD", "OPTIONS"} and self.request.query_params.get("archived") == "true")))
             .annotate(lots_count=Count("lots", filter=Q(lots__deleted_at__isnull=True)))
             .select_related("tenant")
         )

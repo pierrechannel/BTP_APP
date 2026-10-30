@@ -3,10 +3,12 @@ import { Link as RouterLink } from "react-router-dom";
 import { Alert, Box, Button, Chip, LinearProgress, MenuItem, Paper, Skeleton, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Tooltip, Typography } from "@mui/material";
 import { api } from "../api/client";
 import { errorMessage, statusLabels } from "../api/workspace";
+import { AnalyticsLineChart, dashboardGrid, MetricCard, monthRange } from "./AnalyticsWidgets";
+import { ReportOperationsData, ReportsOperationalOverview, ReportsAttention } from "./ReportsOperations";
 
 type Finance = { currency: string; planned: string | number; spent: string | number; remaining: string | number };
 type ProjectSummary = { id: string; name: string; code: string; status: string; tasks: number; completed: number; progress: number; overdue: number; open_incidents: number };
-type Analytics = {
+type Analytics = ReportOperationsData & {
   as_of: string;
   kpis: { projects: number; tasks: number; completed: number; progress: number; overdue: number; open_incidents: number };
   statuses: Array<{ status: string; count: number }>;
@@ -17,9 +19,9 @@ type Analytics = {
 const colors: Record<string, string> = { todo: "#a5b8ac", in_progress: "#39775b", done: "#7aa76a", blocked: "#dc9651", cancelled: "#b46b65" };
 const number = (value: number | string) => Number(value).toLocaleString("fr-FR", { maximumFractionDigits: 2 });
 const card = { p: { xs: 2, md: 3 }, borderRadius: 2 };
-const kpiRow = { display: "grid", gridTemplateColumns: { xs: "repeat(4, minmax(200px, 1fr))", md: "repeat(4, minmax(0, 1fr))" }, gap: 2, overflowX: "auto", pb: 1 };
+const kpiRow = dashboardGrid;
 
-export function ReportsDashboard({ project, startDate, endDate, revision, onProjectSelect }: { project: string; startDate: string; endDate: string; revision: number; onProjectSelect: (id: string) => void }) {
+export function ReportsDashboard({ project, startDate, endDate, revision, onProjectSelect, onHistory }: { project: string; startDate: string; endDate: string; revision: number; onProjectSelect: (id: string) => void; onHistory: (status?: string) => void }) {
   const [data, setData] = useState<Analytics | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -43,9 +45,7 @@ export function ReportsDashboard({ project, startDate, endDate, revision, onProj
   const kpi = data.kpis;
   const selectedFinance = data.finances.find((item) => item.currency === currency);
   const monthly = data.monthly_expenses.filter((item) => item.currency === currency);
-  const maxAmount = Math.max(...monthly.map((item) => Number(item.amount)), 1);
-  const chartWidth = Math.max(560, monthly.length * 85);
-  const cellWidth = chartWidth / Math.max(monthly.length, 1);
+  const months = monthRange(monthly.map((item) => String(item.month)));
   const metrics = [
     { label: "Avancement moyen", value: `${number(kpi.progress)} %`, detail: `${number(kpi.projects)} chantier(s) · ${number(kpi.tasks)} tâches`, color: "#30684e" },
     { label: "Tâches terminées", value: `${number(kpi.completed)} / ${number(kpi.tasks)}`, detail: "Dans le planning sélectionné", color: "#30684e" },
@@ -55,8 +55,9 @@ export function ReportsDashboard({ project, startDate, endDate, revision, onProj
   return <Stack spacing={3}>
     <Stack direction="row" alignItems="center" gap={2} flexWrap="wrap"><Typography variant="h5">Vue analytique</Typography><Chip size="small" label={`Situation au ${new Date(`${data.as_of}T12:00:00`).toLocaleDateString("fr-FR")}`} variant="outlined" /></Stack>
     <Box sx={kpiRow}>
-      {metrics.map((item) => <Paper key={item.label} variant="outlined" sx={{ ...card, borderTop: `3px solid ${item.color}` }}><Typography variant="body2" color="text.secondary">{item.label}</Typography><Typography variant="h4" sx={{ color: item.color, my: 1 }}>{item.value}</Typography><Typography variant="caption" color="text.secondary">{item.detail}</Typography></Paper>)}
+      {metrics.map((item) => <MetricCard key={item.label} label={item.label} value={item.value} detail={item.detail} color={item.color} />)}
     </Box>
+    <ReportsOperationalOverview data={data} onHistory={onHistory} />
     <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: "1fr 1.5fr" }, gap: 3 }}>
       <Paper variant="outlined" sx={card}>
         <Typography variant="h6">Répartition des tâches</Typography><Typography variant="body2" color="text.secondary" mb={3}>Nombre de tâches par statut</Typography>
@@ -71,16 +72,7 @@ export function ReportsDashboard({ project, startDate, endDate, revision, onProj
         </Stack>
         {selectedFinance && <Typography variant="h5" color="primary.main" mt={2}>{number(selectedFinance.spent)} <Typography component="span" variant="body2">{currency} sur la période</Typography></Typography>}
         {!monthly.length ? <Typography color="text.secondary" py={5}>Aucune dépense validée dans ce périmètre.</Typography> : <Box sx={{ overflowX: "auto" }}>
-          <svg role="img" aria-label={`Dépenses mensuelles en ${currency}`} viewBox={`0 0 ${chartWidth} 260`} style={{ display: "block", width: "100%", minWidth: chartWidth, height: 260 }}>
-            <title>Dépenses mensuelles en {currency}</title>
-            <line x1="0" y1="220" x2={chartWidth} y2="220" stroke="#dce5df" />
-            {monthly.map((item, index) => {
-              const height = Number(item.amount) / maxAmount * 160;
-              const center = cellWidth * (index + .5);
-              const label = new Date(`${String(item.month).slice(0, 10)}T12:00:00`).toLocaleDateString("fr-FR", { month: "short", year: "2-digit" });
-              return <g key={item.month}><title>{label} : {number(item.amount)} {currency}</title><rect x={center - cellWidth * .28} y={220 - height} width={cellWidth * .56} height={height} rx="4" fill="#39775b" /><text x={center} y={210 - height} textAnchor="middle" fontSize="12" fill="#234f3d">{number(item.amount)}</text><text x={center} y="246" textAnchor="middle" fontSize="12" fill="#65776c">{label}</text></g>;
-            })}
-          </svg>
+          <AnalyticsLineChart title={`Dépenses mensuelles en ${currency}`} unit={currency} labels={months.map((month) => new Date(`${month}-01T12:00:00`).toLocaleDateString('fr-FR', { month: 'short', year: '2-digit' }))} series={[{ name: 'Dépenses TTC', color: '#39775b', values: months.map((month) => Number(monthly.find((item) => String(item.month).startsWith(month))?.amount ?? 0)) }]} />
         </Box>}
       </Paper>
     </Box>
@@ -98,6 +90,7 @@ export function ReportsDashboard({ project, startDate, endDate, revision, onProj
         {!data.projects.length && <TableRow><TableCell colSpan={6}>Aucun chantier dans ce périmètre.</TableCell></TableRow>}
       </TableBody></Table></TableContainer>
     </Paper>
+    <ReportsAttention data={data} currency={currency} />
     <Typography variant="caption" color="text.secondary">L’avancement est la moyenne des tâches du planning sélectionné. La période filtre les dépenses et les incidents ; les tâches sont retenues si leur planning chevauche cette période ou si leurs dates ne sont pas renseignées.</Typography>
   </Stack>;
 }

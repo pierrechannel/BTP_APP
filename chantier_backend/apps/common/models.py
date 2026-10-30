@@ -38,6 +38,7 @@ class TenantOwnedModel(UUIDModel, TimestampedModel):
         related_name="+",
     )
     deleted_at = models.DateTimeField(null=True, blank=True)
+    archived_at = models.DateTimeField(null=True, blank=True)
     version = models.PositiveIntegerField(default=1)
 
     def save(self, *args, **kwargs):

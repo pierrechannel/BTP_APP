@@ -11,6 +11,7 @@ TENANT_OWNED_READ_ONLY_FIELDS = [
     "created_by",
     "updated_by",
     "deleted_at",
+    "archived_at",
     "version",
 ]
 

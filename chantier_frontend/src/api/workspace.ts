@@ -47,6 +47,8 @@ export function errorMessage(error: unknown): string {
 }
 
 const labels: Record<string, string> = {
+  identity_type: "Type de pièce d’identité", identity_number: "Numéro de pièce d’identité", birth_date: "Date de naissance",
+  payment_basis: "Mode de rémunération", daily_rate: "Prix journalier", monthly_rate: "Forfait mensuel", details: "Lignes de dépense",
   project_name: "Chantier", lot_name: "Lot", spent: "Consommé TTC", remaining: "Disponible", material_name: "Matériau", order_status: "Statut de la commande",
   name: "Nom", title: "Titre", code: "Code", reference: "Référence", description: "Description", status: "Statut",
   project: "Chantier", lot: "Lot", parent: "Élément parent", client_name: "Maître d’ouvrage", address: "Adresse",
@@ -107,6 +109,7 @@ export const recordTitle = (row: Record<string, unknown>) => String(row.name ?? 
     || (row.material ? "Ligne de commande" : "") || (row.template ? `Rapport du ${formatValue(row.created_at, "created_at")}` : "")
     || (row.body ? String(row.body).slice(0, 80) : "") || "Fiche associée"));
 export function formatValue(value: unknown, field = ""): string {
+  if (field === 'payment_basis') return ({ hourly: 'Horaire', daily: 'Journalier', monthly: 'Forfait mensuel' } as Record<string, string>)[String(value)] ?? String(value ?? '');
   if (value === null || value === undefined || value === "") return "—";
   if (typeof value === "boolean") return value ? "Oui" : "Non";
   if (field === "size") return `${(Number(value) / 1024).toLocaleString("fr-FR", { maximumFractionDigits: 1 })} Ko`;

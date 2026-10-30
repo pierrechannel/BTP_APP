@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link as RouterLink, useNavigate, useParams } from "react-router-dom";
-import { Alert, Box, Button, Chip, Divider, LinearProgress, MenuItem, Paper, Skeleton, Stack, TextField, Typography } from "@mui/material";
+import { Dialog, DialogTitle, DialogContent, DialogActions, Tab, Tabs, Alert, Box, Button, Chip, Divider, LinearProgress, MenuItem, Paper, Skeleton, Stack, TextField, Typography } from "@mui/material";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import DescriptionOutlinedIcon from "@mui/icons-material/DescriptionOutlined";
 import AutoAwesomeOutlinedIcon from "@mui/icons-material/AutoAwesomeOutlined";
@@ -8,7 +8,7 @@ import RefreshIcon from "@mui/icons-material/Refresh";
 import FilterAltOffOutlinedIcon from "@mui/icons-material/FilterAltOffOutlined";
 import TuneIcon from "@mui/icons-material/Tune";
 import { api } from "../api/client";
-import { ApiRecord, Paginated } from "../api/types";
+import { ApiRecord } from "../api/types";
 import { errorMessage, fetchCollection, formatValue, notifyChange } from "../api/workspace";
 import { useWorkspace } from "../state/workspace";
 import { resourceByModel } from "../resources";
@@ -61,6 +61,10 @@ export function ReportsPage({ detail = false }: { detail?: boolean }) {
   const [editingTemplate, setEditingTemplate] = useState(false);
   const [revision, setRevision] = useState(0);
   const [documentOptions, setDocumentOptions] = useState(false);
+  const [reportModal, setReportModal] = useState(false);
+  const [reportTab, setReportTab] = useState(0);
+  const [historyStatus, setHistoryStatus] = useState('');
+  const [historySearch, setHistorySearch] = useState('');
   const syncedKey = useRef("");
 
   const templateName = useMemo(() => {
@@ -73,9 +77,9 @@ export function ReportsPage({ detail = false }: { detail?: boolean }) {
     setLoading(true); setError("");
     Promise.all([
       fetchCollection("/reports/templates/", {}, controller.signal),
-      api.get<Paginated<ApiRecord>>("/reports/runs/", { signal: controller.signal }),
+      fetchCollection("/reports/runs/", {}, controller.signal),
     ]).then(([models, runs]) => {
-      setTemplates(models); setHistory(runs.data.results);
+      setTemplates(models); setHistory(runs);
       setTemplate((current) => current || String(models[0]?.id ?? ""));
     }).catch((err) => { if (!controller.signal.aborted) setError(errorMessage(err)); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
@@ -120,7 +124,7 @@ export function ReportsPage({ detail = false }: { detail?: boolean }) {
       const selected = projects.find((item) => String(item.id) === project);
       const parameters = { ...(selected ? { project: selected.code } : {}), ...(startDate ? { start_date: startDate } : {}), ...(endDate ? { end_date: endDate } : {}), ...(observations.trim() ? { observations: observations.trim() } : {}) };
       const { data } = await api.post<ApiRecord>(`/reports/templates/${template}/run/`, { parameters });
-      notifyChange(); navigate(`/reports/runs/${data.id}`);
+      setReportModal(false); notifyChange(); navigate(`/reports/runs/${data.id}`);
     } catch (err) { setError(errorMessage(err)); }
     finally { setGenerating(false); }
   };
@@ -130,24 +134,41 @@ export function ReportsPage({ detail = false }: { detail?: boolean }) {
 
   const invalidPeriod = Boolean(startDate && endDate && endDate < startDate);
   const hasFilters = Boolean(project || startDate || endDate);
-  const showDocumentFields = detail || documentOptions;
+  const showDocumentFields = detail || documentOptions || reportModal;
   const runParams = (run?.parameters ?? {}) as Record<string, string>;
   const runProjectName = projects.find((item) => item.code === runParams.project)?.name;
   const reportTitle = templateName(run?.template);
+  const selectedProjectCode = projects.find((item) => String(item.id) === project)?.code;
+  const visibleHistory = history.filter((item) => {
+    const params = (item.parameters ?? {}) as Record<string, string>;
+    const created = item.created_at ? new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Bujumbura', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(item.created_at)) : '';
+    return (!historyStatus || item.status === historyStatus) && (!project || params.project === selectedProjectCode)
+      && (!startDate || created >= startDate) && (!endDate || created <= endDate)
+      && `${templateName(item.template)} ${item.id}`.toLocaleLowerCase().includes(historySearch.toLocaleLowerCase());
+  });
 
   return <Stack spacing={3}>
     <Stack direction="row" alignItems="center" justifyContent="space-between" gap={2} flexWrap="wrap">
       <Box><Typography variant="overline" color="primary.main">PILOTAGE DES CHANTIERS</Typography>
-        <Typography variant="h4" component="h1">{detail ? reportTitle : "Rapports et analyses"}</Typography>
+        <Typography variant="h4" component="h1">{detail ? reportTitle : "Tableau de bord des rapports"}</Typography>
         <Typography variant="body2" color="text.secondary" mt={1}>Une synthèse claire pour suivre les travaux, les finances et la sécurité.</Typography></Box>
       <Stack direction="row" gap={1}>
         {detail && <Button component={RouterLink} to="/reports" startIcon={<ArrowBackIcon />}>Rapports</Button>}
         <Button aria-label="Actualiser les rapports" startIcon={<RefreshIcon />} onClick={() => setRevision((value) => value + 1)}>Actualiser</Button>
+        {can('reports', 'create') && <Button variant="contained" startIcon={<AutoAwesomeOutlinedIcon />} onClick={() => setReportModal(true)}>Générer un rapport</Button>}
       </Stack>
     </Stack>
 
     {error && <Alert severity="error" action={<Button color="inherit" size="small" onClick={() => setRevision((value) => value + 1)}>Réessayer</Button>}>{error}</Alert>}
 
+    {!detail && <Tabs value={reportTab} onChange={(_, value) => setReportTab(value)} aria-label="Rapports"><Tab label="Analyses et détails" /><Tab label="Historique des rapports" /></Tabs>}
+    {!detail && <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+      <TextField fullWidth select label="Chantier des analyses" size="small" value={project} onChange={(event) => setProject(event.target.value)}><MenuItem value="">Tous les chantiers</MenuItem>{projects.map((item) => <MenuItem key={item.id} value={String(item.id)}>{String(item.name)}</MenuItem>)}</TextField>
+      <TextField fullWidth label="Début des analyses" type="date" size="small" value={startDate} onChange={(event) => setStartDate(event.target.value)} InputLabelProps={{ shrink: true }} />
+      <TextField fullWidth label="Fin des analyses" type="date" size="small" value={endDate} onChange={(event) => setEndDate(event.target.value)} InputLabelProps={{ shrink: true }} error={invalidPeriod} helperText={invalidPeriod ? 'La fin doit suivre le début.' : undefined} />
+    </Stack>}
+    {!detail && <Stack direction="row" gap={1} flexWrap="wrap" alignItems="center"><Typography fontSize={12} color="text.secondary">Période rapide</Typography>{PERIOD_PRESETS.map((preset) => <Chip key={preset.label} size="small" clickable variant="outlined" label={preset.label} onClick={() => applyPreset(preset.range)} />)}{hasFilters && <Button size="small" onClick={resetFilters}>Réinitialiser</Button>}</Stack>}
+    <Dialog open={reportModal} onClose={generating ? undefined : () => setReportModal(false)} fullWidth maxWidth="md"><DialogTitle>Générer un rapport</DialogTitle><DialogContent>
     <Paper variant="outlined" component="form" onSubmit={(event) => { event.preventDefault(); if (!generating && !invalidPeriod && template) void generate(); }} sx={{ p: { xs: 2, md: 3 } }}>
       <Stack direction="row" alignItems="center" justifyContent="space-between" mb={2} gap={2}>
         <Box><Typography variant="h6" component="h2">{detail ? "Préparer une nouvelle édition" : "Périmètre du tableau de bord"}</Typography><Typography variant="body2" color="text.secondary">Choisissez le périmètre et la période à présenter.</Typography></Box>
@@ -184,7 +205,9 @@ export function ReportsPage({ detail = false }: { detail?: boolean }) {
       {!loading && !templates.length && <Alert severity="info" sx={{ mt: 2 }}>Créez un modèle pour générer votre premier rapport.</Alert>}
     </Paper>
 
-    {!detail && <ReportsDashboard project={project} startDate={startDate} endDate={endDate} revision={revision} onProjectSelect={setProject} />}
+    </DialogContent><DialogActions><Button disabled={generating} onClick={() => setReportModal(false)}>Fermer</Button></DialogActions></Dialog>
+
+    {!detail && reportTab === 0 && <ReportsDashboard project={project} startDate={startDate} endDate={endDate} revision={revision} onProjectSelect={setProject} onHistory={(status) => { setHistoryStatus(status ?? ''); setReportTab(1); }} />}
 
     {detail ? run ? <>
       <Stack direction="row" gap={2} flexWrap="wrap" alignItems="center"><StatusBadge value={run.status} /><Typography variant="body2" color="text.secondary">Édition du {formatValue(run.created_at, "created_at")}</Typography><Chip size="small" variant="outlined" label={`Réf. ${String(run.id).slice(0, 8).toUpperCase()}`} /></Stack>
@@ -192,10 +215,12 @@ export function ReportsPage({ detail = false }: { detail?: boolean }) {
       {run.status === "pending" && <Alert severity="info" icon={false}><Typography variant="body2" mb={1}>Le rapport est en cours de génération. Cette page se met à jour automatiquement.</Typography><LinearProgress /></Alert>}
       {run.status === "failed" && <Alert severity="error">La génération a échoué. Vérifiez le périmètre puis générez une nouvelle édition avec le formulaire ci-dessus.</Alert>}
       {run.status === "completed" && <ReportPreview record={run} />}
-    </> : !error && <Skeleton variant="rounded" height={500} /> : <Paper variant="outlined" sx={{ p: { xs: 2, md: 3 } }}>
+    </> : !error && <Skeleton variant="rounded" height={500} /> : reportTab === 1 && <Paper variant="outlined" sx={{ p: { xs: 2, md: 3 } }}>
       <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2}><Typography variant="h6" component="h2">Derniers rapports</Typography><Button component={RouterLink} to="/reports/runs">Tout l’historique</Button></Stack>
-      {loading ? <Skeleton height={180} /> : !history.length ? <Box textAlign="center" py={5}><DescriptionOutlinedIcon sx={{ fontSize: 48, color: "text.secondary" }} /><Typography mt={1}>Votre premier rapport commence ici.</Typography><Typography variant="body2" color="text.secondary">Choisissez un chantier puis générez sa synthèse.</Typography></Box> : <Stack divider={<Divider />}>
-        {history.slice(0, 8).map((item) => <Stack key={item.id} direction={{ xs: "column", sm: "row" }} gap={2} py={2} alignItems={{ sm: "center" }}>
+      <Stack direction={{ xs: 'column', sm: 'row' }} gap={2} mb={2}><TextField fullWidth size="small" label="Rechercher un modèle ou une référence" value={historySearch} onChange={(e) => setHistorySearch(e.target.value)} /><TextField select size="small" label="Statut" value={historyStatus} onChange={(e) => setHistoryStatus(e.target.value)} sx={{ minWidth: 180 }}><MenuItem value="">Tous les statuts</MenuItem><MenuItem value="completed">Disponibles</MenuItem><MenuItem value="pending">En attente</MenuItem><MenuItem value="failed">En échec</MenuItem></TextField></Stack>
+      <Typography fontSize={12} color="text.secondary" mb={2}>{visibleHistory.length} édition(s) · filtres sur la date de création et le chantier du rapport</Typography>
+      {loading ? <Skeleton height={180} /> : !visibleHistory.length ? <Box textAlign="center" py={5}><DescriptionOutlinedIcon sx={{ fontSize: 48, color: "text.secondary" }} /><Typography mt={1}>Aucun rapport dans ce périmètre.</Typography><Typography variant="body2" color="text.secondary">Adaptez les filtres ou générez une nouvelle synthèse.</Typography></Box> : <Stack divider={<Divider />}>
+        {visibleHistory.map((item) => <Stack key={item.id} direction={{ xs: "column", sm: "row" }} gap={2} py={2} alignItems={{ sm: "center" }}>
           <DescriptionOutlinedIcon color="primary" /><Box flex={1}><Typography fontWeight={600}>{templateName(item.template)}</Typography><Typography variant="caption" color="text.secondary">{formatValue(item.created_at, "created_at")}</Typography></Box><StatusBadge value={item.status} /><Button component={RouterLink} to={`/reports/runs/${item.id}`}>Ouvrir le rapport</Button>
         </Stack>)}
       </Stack>}

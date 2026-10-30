@@ -38,6 +38,9 @@ export const isDeletionLocked = (model: string, record: ApiRecord) =>
   || (model === "workforce.timeentry" && Boolean(record.is_validated));
 
 export function visibleFormField(model: string, name: string, values: Record<string, unknown>) {
+  if (model === 'workforce.worker' && ['hourly_rate', 'daily_rate', 'monthly_rate'].includes(name)) {
+    return name === ({ hourly: 'hourly_rate', daily: 'daily_rate', monthly: 'monthly_rate' }[String(values.payment_basis || 'hourly')]);
+  }
   if (model === "resources.stockmovement") {
     if (name === "source_location") return ["out", "transfer"].includes(String(values.movement_type));
     if (name === "target_location") return ["in", "transfer", "adjustment"].includes(String(values.movement_type));
@@ -96,7 +99,7 @@ const formOrders: Record<string, string[]> = {
   "resources.purchaseorder": ["order_number", "project", "supplier", "ordered_at", "status"],
   "resources.purchaseorderline": ["purchase_order", "material", "quantity", "unit_price", "currency"],
   "resources.stockmovement": ["movement_type", "material", "quantity", "movement_date", "source_location", "target_location", "notes"],
-  "workforce.worker": ["first_name", "last_name", "job_title", "hourly_rate", "currency"],
+  "workforce.worker": ["first_name", "last_name", "birth_date", "identity_type", "identity_number", "address", "phone", "job_title", "payment_basis", "hourly_rate", "daily_rate", "monthly_rate", "currency"],
   "workforce.timeentry": ["worker", "project", "task", "work_date", "normal_hours", "overtime_hours"],
   "workforce.workercertification": ["worker", "certification", "issued_at", "expires_at"],
   "documents.documentversion": ["document", "version_label", "file", "original_name", "is_current"],

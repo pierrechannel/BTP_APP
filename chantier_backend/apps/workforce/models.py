@@ -10,6 +10,17 @@ class Worker(TenantOwnedModel):
     first_name = models.CharField(max_length=120)
     last_name = models.CharField(max_length=120)
     job_title = models.CharField(max_length=120, blank=True)
+    address = models.TextField("Adresse", blank=True)
+    phone = models.CharField("Téléphone", max_length=40, blank=True)
+    identity_type = models.CharField("Type de pièce d'identité", max_length=80, blank=True)
+    identity_number = models.CharField("Numéro de pièce d'identité", max_length=120, blank=True)
+    birth_date = models.DateField("Date de naissance", null=True, blank=True)
+    payment_basis = models.CharField("Mode de rémunération", max_length=10, default="hourly",
+        choices=[("hourly", "Horaire"), ("daily", "Journalier"), ("monthly", "Forfait mensuel")])
+    daily_rate = models.DecimalField("Prix journalier", max_digits=18, decimal_places=2,
+        null=True, blank=True, validators=[MinValueValidator(Decimal("0"))])
+    monthly_rate = models.DecimalField("Forfait mensuel", max_digits=18, decimal_places=2,
+        null=True, blank=True, validators=[MinValueValidator(Decimal("0"))])
     hourly_rate = models.DecimalField(
         max_digits=18, decimal_places=2, null=True, blank=True,
         validators=[MinValueValidator(Decimal("0"))],

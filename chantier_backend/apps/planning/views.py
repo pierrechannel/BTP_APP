@@ -8,6 +8,11 @@ from apps.planning.serializers import TaskDependencySerializer, TaskSerializer
 
 
 class TaskViewSet(TenantModelViewSet):
+    @action(detail=False, methods=["get"], url_path="weekly-pdf")
+    def weekly_pdf(self, request):
+        from apps.reports.business_pdf import weekly_pdf
+        return weekly_pdf(request, self.filter_queryset(self.get_queryset()))
+
     queryset = Task.objects.select_related("project", "lot", "parent", "tenant")
     serializer_class = TaskSerializer
     filterset_fields = ["project", "lot", "status"]

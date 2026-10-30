@@ -2,6 +2,9 @@
 
 Backend Django/DRF pour l'application de gestion de chantiers BTP "Chantier".
 
+Guide des formulaires, présences, habilitations, commandes, rapports et archives :
+[Guide utilisateur](GUIDE_UTILISATEUR.md).
+
 ## Demarrage local
 
 Le developpement local utilise SQLite par defaut.
