@@ -3,9 +3,6 @@ from uuid import UUID
 from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.viewsets import ModelViewSet
-from rest_framework.decorators import action
-from rest_framework.response import Response
-from django.utils import timezone
 
 from apps.accounts.models import AuditLog, Tenant
 from apps.common.concurrency import VersionedWriteMixin
@@ -38,30 +35,7 @@ class TenantModelViewSet(VersionedWriteMixin, ModelViewSet):
         "pay": "validate",
         "stock": "read",
         "attendance_pdf": "read", "worker_attendance_pdf": "read", "weekly_pdf": "read", "pdf": "read",
-        "archive": "delete", "restore": "delete",
     }
-
-    @action(detail=True, methods=["post"])
-    def archive(self, request, pk=None):
-        instance = self.get_object()
-        if not hasattr(instance, "archived_at"):
-            raise ValidationError("Cette ressource ne prend pas en charge l'archivage.")
-        instance.archived_at = timezone.now()
-        instance.version += 1
-        instance.updated_by = request.user
-        instance.save(update_fields=["archived_at", "version", "updated_by", "updated_at"])
-        return Response(self.get_serializer(instance).data)
-
-    @action(detail=True, methods=["post"])
-    def restore(self, request, pk=None):
-        instance = self.get_object()
-        if not hasattr(instance, "archived_at"):
-            raise ValidationError("Cette ressource ne prend pas en charge l'archivage.")
-        instance.archived_at = None
-        instance.version += 1
-        instance.updated_by = request.user
-        instance.save(update_fields=["archived_at", "version", "updated_by", "updated_at"])
-        return Response(self.get_serializer(instance).data)
 
     def perform_destroy(self, instance):
         if not hasattr(instance, "deleted_at"):
@@ -81,9 +55,6 @@ class TenantModelViewSet(VersionedWriteMixin, ModelViewSet):
         queryset = queryset.filter(tenant_id=self.request.tenant_id)
         if hasattr(queryset.model, "deleted_at"):
             queryset = queryset.filter(deleted_at__isnull=True)
-        if hasattr(queryset.model, "archived_at"):
-            archived = self.action == "restore" or (self.request.method in {"GET", "HEAD", "OPTIONS"} and self.request.query_params.get("archived") == "true")
-            queryset = queryset.filter(archived_at__isnull=not archived)
         for field in queryset.model._meta.fields:
             if field.is_relation and hasattr(field.related_model, "deleted_at"):
                 queryset = queryset.filter(**{f"{field.name}__deleted_at__isnull": True})

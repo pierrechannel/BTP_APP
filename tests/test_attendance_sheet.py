@@ -82,3 +82,21 @@ def test_sheet_rejects_foreign_scope_unassigned_workers_and_update_without_permi
     assert client.post(ROOT + 'save-sheet/', payload, format='json').status_code == 403
     entry.refresh_from_db()
     assert entry.version == 1
+
+
+def test_sheet_persists_attendance_and_rejects_inconsistent_hours(setup):
+    tenant, _, project, _, client = setup
+    worker = assigned(tenant, project)
+    payload = {'project': str(project.pk), 'work_date': '2026-10-30', 'entries': [{
+        'worker': str(worker.pk), 'attendance_status': 'late',
+        'arrival_time': '07:45', 'departure_time': '16:00',
+        'normal_hours': '8.25', 'overtime_hours': '0'}]}
+    response = client.post(ROOT + 'save-sheet/', payload, format='json')
+    assert response.status_code == 200, response.data
+    row = client.get(ROOT + 'sheet/', {'project': project.pk, 'work_date': '2026-10-30'}).data['rows'][0]
+    assert row['attendance_status'] == 'late'
+    assert str(row['arrival_time']) == '07:45:00'
+    payload['entries'][0].update(entry_id=str(row['entry_id']), version=row['version'], attendance_status='absent')
+    assert client.post(ROOT + 'save-sheet/', payload, format='json').status_code == 400
+    payload['entries'][0].update(arrival_time=None, departure_time=None, normal_hours='0')
+    assert client.post(ROOT + 'save-sheet/', payload, format='json').status_code == 200

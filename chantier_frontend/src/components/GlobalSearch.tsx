@@ -1,6 +1,7 @@
+import { FormTextField as TextField } from './FormTextField';
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Alert, Box, CircularProgress, Dialog, DialogContent, IconButton, InputAdornment, List, ListItemButton, ListItemText, TextField, Tooltip, Typography } from "@mui/material";
+import { Alert, Box, CircularProgress, Dialog, DialogContent, IconButton, InputAdornment, List, ListItemButton, ListItemText, Tooltip, Typography } from "@mui/material";
 import SearchOutlinedIcon from "@mui/icons-material/SearchOutlined";
 import { api } from "../api/client";
 import { ApiRecord, Paginated } from "../api/types";

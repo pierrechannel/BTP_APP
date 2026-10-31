@@ -1,6 +1,6 @@
 import { Link as RouterLink } from 'react-router-dom';
 import { Box, Button, Chip, LinearProgress, Paper, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Typography } from '@mui/material';
-import { AnalyticsLineChart, dashboardGrid, formatNumber as n, MetricCard, monthRange, panelSx } from './AnalyticsWidgets';
+import { AnalyticsLineChart, compactDashboardGrid as dashboardGrid, formatNumber as n, MetricCard, monthRange, panelSx } from './AnalyticsWidgets';
 import { StatusBadge } from './StatusBadge';
 import { useWorkspace } from '../state/workspace';
 
@@ -20,15 +20,15 @@ export function ReportsOperationalOverview({ data, onHistory }: { data: ReportOp
   const months = monthRange(data.monthly_reports.map((item) => item.month));
   return <>
     <Box sx={dashboardGrid}>
-      <MetricCard label="Heures pointées" value={`${n(Number(data.attendance.normal_hours || 0) + Number(data.attendance.overtime_hours || 0))} h`} detail={`${n(data.attendance.workers)} collaborateurs · ${n(data.attendance.validated)} pointages validés sur ${n(data.attendance.entries)}`} />
-      <MetricCard label="Dépenses à traiter" value={n(pendingExpenses)} detail="Dépenses en brouillon ou soumises sur la période" color={pendingExpenses ? '#a8742a' : '#216e58'} />
-      <MetricCard label="Rapports disponibles" value={n(reports('completed'))} detail={`${n(reports())} éditions créées dans le périmètre sélectionné`} color="#3e6d98" />
-      <MetricCard label="Rapports en échec" value={n(reports('failed'))} detail={`${n(reports('pending'))} éditions en attente de génération`} color={reports('failed') ? '#ad504b' : '#216e58'} />
+      <MetricCard compact label="Heures pointées" value={`${n(Number(data.attendance.normal_hours || 0) + Number(data.attendance.overtime_hours || 0))} h`} detail={`${n(data.attendance.workers)} collaborateurs · ${n(data.attendance.validated)} pointages validés sur ${n(data.attendance.entries)}`} />
+      <MetricCard compact label="Dépenses à traiter" value={n(pendingExpenses)} detail="Dépenses en brouillon ou soumises sur la période" color={pendingExpenses ? '#a8742a' : '#216e58'} />
+      <MetricCard compact label="Rapports disponibles" value={n(reports('completed'))} detail={`${n(reports())} éditions créées dans le périmètre sélectionné`} color="#3e6d98" />
+      <MetricCard compact label="Rapports en échec" value={n(reports('failed'))} detail={`${n(reports('pending'))} éditions en attente de génération`} color={reports('failed') ? '#ad504b' : '#216e58'} />
     </Box>
     <Paper variant="outlined" sx={panelSx}><Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" gap={2} mb={2}><Box><Typography variant="h6">Production des rapports</Typography><Typography fontSize={12} color="text.secondary">Éditions par mois de création, selon leur statut actuel</Typography></Box><Button onClick={() => onHistory()}>Consulter l’historique</Button></Stack>
-      <AnalyticsLineChart title="Évolution des rapports générés" labels={months.map((month) => new Date(`${month}-01T12:00:00`).toLocaleDateString('fr-FR', { month: 'short', year: '2-digit' }))} unit="rapport(s)" series={[
-        { name: 'Disponibles', color: '#39775b', status: 'completed' }, { name: 'En attente', color: '#b78c3e', status: 'pending' }, { name: 'En échec', color: '#b65e57', status: 'failed' },
-      ].map((s) => ({ name: s.name, color: s.color, values: months.map((month) => data.monthly_reports.filter((item) => item.month.startsWith(month) && item.status === s.status).reduce((sum, item) => sum + item.count, 0)) }))} />
+      <AnalyticsLineChart integerTicks showArea={false} title="Évolution des rapports générés" labels={months.map((month) => new Date(`${month}-01T12:00:00`).toLocaleDateString('fr-FR', { month: 'short', year: '2-digit' }))} unit="rapport(s)" series={[
+        { name: 'Disponibles', color: '#39775b', status: 'completed' }, { name: 'En attente', color: '#b78c3e', status: 'pending', dash: '7 4' }, { name: 'En échec', color: '#b65e57', status: 'failed', dash: '2 4' },
+      ].map((s) => ({ name: s.name, color: s.color, dash: s.dash, values: months.map((month) => data.monthly_reports.filter((item) => item.month.startsWith(month) && item.status === s.status).reduce((sum, item) => sum + item.count, 0)) }))} />
       <Stack direction="row" gap={1} flexWrap="wrap" mt={1}><Chip label={`${reports('completed')} disponibles`} color="success" variant="outlined" onClick={() => onHistory('completed')} /><Chip label={`${reports('pending')} en attente`} color="warning" variant="outlined" onClick={() => onHistory('pending')} /><Chip label={`${reports('failed')} en échec`} color={reports('failed') ? 'error' : 'default'} variant="outlined" onClick={() => onHistory('failed')} /></Stack>
     </Paper>
   </>;
@@ -46,6 +46,13 @@ export function ReportsAttention({ data, currency }: { data: ReportOperationsDat
       </Paper>
       <Paper variant="outlined" sx={panelSx}><Typography variant="h6">Dépenses par catégorie</Typography><Typography fontSize={12} color="text.secondary" mb={3}>Montants TTC validés ou payés · {currency || 'Aucune devise'}</Typography><Stack spacing={2.25}>{categories.map((item) => <Box key={item.budget_line__category}><Stack direction="row" justifyContent="space-between" mb={.75} gap={2}><Typography fontSize={13}>{item.budget_line__category || 'Non classé'}</Typography><Typography fontSize={13} fontWeight={600}>{n(item.amount)} {currency}</Typography></Stack><LinearProgress variant="determinate" value={sum > 0 ? Number(item.amount) / sum * 100 : 0} sx={{ height: 7, borderRadius: 2, bgcolor: '#eef2ef' }} /></Box>)}</Stack>{!categories.length && <Typography color="text.secondary" fontSize={13} py={4}>Aucune dépense validée dans cette devise.</Typography>}</Paper>
     </Box>
-    <Paper variant="outlined" sx={panelSx}><Typography variant="h6">Dernières dépenses</Typography><Typography fontSize={12} color="text.secondary" mb={2}>Les 8 dépenses les plus récentes de la période, tous statuts</Typography><TableContainer><Table size="small" aria-label="Dernières dépenses des rapports"><TableHead><TableRow><TableCell>Dépense</TableCell><TableCell>Chantier</TableCell><TableCell>Date</TableCell><TableCell align="right">Montant TTC</TableCell><TableCell>Statut</TableCell><TableCell>Action</TableCell></TableRow></TableHead><TableBody>{data.recent_expenses.map((item) => <TableRow key={item.id} hover><TableCell><Typography fontSize={13} fontWeight={600}>{item.supplier_name || item.budget_line__label}</Typography><Typography fontSize={12} color="text.secondary">{item.budget_line__label}</Typography></TableCell><TableCell>{item.budget_line__budget__project__name}</TableCell><TableCell sx={{ whiteSpace: 'nowrap' }}>{new Date(`${item.date}T12:00:00`).toLocaleDateString('fr-FR')}</TableCell><TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>{n(item.amount_including_tax)} {item.currency}</TableCell><TableCell><StatusBadge value={item.status} /></TableCell><TableCell>{!item.archived_at && can('budget') && <Button size="small" component={RouterLink} to={`/budget/expenses/${item.id}`}>Voir</Button>}</TableCell></TableRow>)}{!data.recent_expenses.length && <TableRow><TableCell colSpan={6}>Aucune dépense sur la période.</TableCell></TableRow>}</TableBody></Table></TableContainer></Paper>
+
   </>;
+}
+
+export function ReportsExpenses({ data }: { data: ReportOperationsData }) {
+  const { can } = useWorkspace();
+  return (
+    <Paper variant="outlined" sx={panelSx}><Typography variant="h6">Dernières dépenses</Typography><Typography fontSize={12} color="text.secondary" mb={2}>Les 8 dépenses les plus récentes de la période, tous statuts</Typography><TableContainer><Table size="small" aria-label="Dernières dépenses des rapports"><TableHead><TableRow><TableCell>Dépense</TableCell><TableCell>Chantier</TableCell><TableCell>Date</TableCell><TableCell align="right">Montant TTC</TableCell><TableCell>Statut</TableCell><TableCell>Action</TableCell></TableRow></TableHead><TableBody>{data.recent_expenses.map((item) => <TableRow key={item.id} hover><TableCell><Typography fontSize={13} fontWeight={600}>{item.supplier_name || item.budget_line__label}</Typography><Typography fontSize={12} color="text.secondary">{item.budget_line__label}</Typography></TableCell><TableCell>{item.budget_line__budget__project__name}</TableCell><TableCell sx={{ whiteSpace: 'nowrap' }}>{new Date(`${item.date}T12:00:00`).toLocaleDateString('fr-FR')}</TableCell><TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>{n(item.amount_including_tax)} {item.currency}</TableCell><TableCell><StatusBadge value={item.status} /></TableCell><TableCell>{!item.archived_at && can('budget') && <Button size="small" component={RouterLink} to={`/budget/expenses/${item.id}`}>Voir</Button>}</TableCell></TableRow>)}{!data.recent_expenses.length && <TableRow><TableCell colSpan={6}>Aucune dépense sur la période.</TableCell></TableRow>}</TableBody></Table></TableContainer></Paper>
+  );
 }

@@ -1,5 +1,6 @@
+import { FormTextField as TextField } from './FormTextField';
 import { useEffect, useState } from "react";
-import { Alert, Box, Checkbox, Divider, LinearProgress, Paper, Stack, TextField, Typography } from "@mui/material";
+import { Alert, Box, Checkbox, Divider, LinearProgress, Paper, Stack, Typography } from "@mui/material";
 import { api } from "../api/client";
 import { ApiRecord } from "../api/types";
 import { errorMessage, fetchCollection, versionHeaders } from "../api/workspace";

@@ -40,7 +40,7 @@ def report_analytics(tenant_id, params):
         deleted_at__isnull=True, budget_line__deleted_at__isnull=True, budget_line__budget__deleted_at__isnull=True)
     attendance = TimeEntry.objects.filter(tenant_id=tenant_id, project__in=projects,
         deleted_at__isnull=True, worker__deleted_at__isnull=True)
-    runs = ReportRun.objects.filter(tenant_id=tenant_id, deleted_at__isnull=True, archived_at__isnull=True, template__deleted_at__isnull=True)
+    runs = ReportRun.objects.filter(tenant_id=tenant_id, deleted_at__isnull=True, template__deleted_at__isnull=True)
     if values.get('project'):
         code = projects.values_list('code', flat=True).first()
         runs = runs.filter(parameters__project=code) if code else runs.none()

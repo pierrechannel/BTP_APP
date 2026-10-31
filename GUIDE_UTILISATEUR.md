@@ -8,6 +8,30 @@ Les boutons disponibles dépendent de votre rôle. Contactez votre administrateu
 
 Pour les présences, les bons de commande et le planning hebdomadaire, le bouton **Générer et visualiser le PDF** affiche le document dans une fenêtre d’aperçu. Vous pouvez ensuite **Télécharger le PDF**, l’**Ouvrir / imprimer**, ou **Modifier les paramètres** pour générer une autre édition.
 
+### Vue d’ensemble d’un chantier
+
+Ouvrez une fiche dans **Chantiers**. L’onglet **Vue d’ensemble** présente les indicateurs accessibles selon vos droits : avancement, tâches en retard, disponible budgétaire et incidents ouverts. Les alertes prioritaires proposent des liens vers les éléments à traiter. Les échéances sont calculées à la date de Bujumbura.
+
+L’avancement correspond à la moyenne des tâches sans sous-tâches actives, hors tâches annulées et archivées. Les tâches terminées comptent pour 100 %. Cette moyenne n’est pas pondérée par durée ou coût ; sans tâche, l’indicateur affiche **Non renseigné**.
+
+La situation financière distingue le montant du marché, le budget prévu, l’engagé (dépenses soumises), le consommé (validées et payées), le payé et le disponible. Les brouillons ne réduisent pas le disponible. L’activité récente affiche les rapports journaliers, photos et documents auxquels vous avez accès.
+
+Les onglets **Lots**, **Données associées**, **Informations** et **Traçabilité** permettent de retrouver les autres données. L’onglet sélectionné est conservé dans l’adresse de la page, y compris après rechargement.
+
+### Journal de chantier : rapports, photos et validation
+
+Dans **Journal de chantier**, la liste chronologique propose une recherche et des filtres de période et de statut. Les indicateurs comptent les brouillons, rapports soumis et validés sur la période ; les réserves en retard sont calculées à ce jour pour le chantier sélectionné.
+
+**Nouveau rapport** ouvre une page dédiée. Choisissez le chantier et la date, renseignez la météo, décrivez les travaux et les difficultés, puis ajoutez les photos du terrain (30 maximum, 10 Mo par photo). Les photos et leurs retraits sont sauvegardés avec le brouillon. Plusieurs rapports par chantier et par jour sont autorisés.
+
+Depuis la fiche du rapport, **Soumettre** exige une description des travaux. Le rapport soumis et ses photos deviennent non modifiables. Un utilisateur habilité peut **Demander une correction**, avec un motif obligatoire : le rapport revient en brouillon. **Valider** protège le rapport et ses photos contre la modification et la suppression, y compris par suppression du chantier parent. La date et l’auteur de validation sont conservés. Un rapport validé ne revient pas en brouillon.
+
+La galerie permet d’agrandir et de télécharger les photos. **Télécharger le PDF** exporte les observations, les informations de validation et les photos du rapport. Les accès dépendent des droits du module.
+
+Dans **Relevés d’avancement**, le pourcentage doit être compris entre 0 et 100. Le relevé le plus récent par date met à jour la tâche du planning ; à date égale, le relevé créé le plus récemment est retenu. Un relevé historique ne remplace pas une mesure plus récente. La suppression d’un relevé recalcule l’avancement depuis le dernier relevé restant (0 % si aucun). Le rattachement d’un relevé existant à une autre tâche est interdit.
+
+Dans **Réserves**, utilisez **Prendre en charge**, **Résoudre**, **Rouvrir** et **Clôturer** selon l’état. La résolution renseigne automatiquement sa date ; rouvrir la réserve efface cette date. Une réserve clôturée n’est plus modifiable.
+
 ## 2. Créer un collaborateur
 
 1. Ouvrez **Collaborateurs**, puis **Créer**.
@@ -55,6 +79,18 @@ Les **droits d’accès à l’application** sont distincts : ils sont attribué
 6. Sans détail, saisissez directement le montant HT. Vérifiez puis enregistrez.
 
 Le calcul s’effectue dans la devise de la dépense ; aucune conversion automatique n’est appliquée. Les dépenses validées ou payées restent protégées contre les modifications.
+
+### Joindre et consulter les reçus
+
+Sur une **facture**, la zone **Fichier de la facture** permet également de joindre un PDF ou une image (JPG, PNG, WebP), jusqu’à 10 Mo. Le fichier est sauvegardé avec le formulaire. Il peut être remplacé en brouillon, puis consulté ou téléchargé depuis la fiche de facture selon vos droits. Le fichier est facultatif.
+
+Dans le formulaire de dépense, utilisez **Justificatifs → Ajouter des justificatifs**, puis sélectionnez un ou plusieurs reçus ou factures scannées. Les formats acceptés sont PDF, JPG, PNG et WebP, avec une limite de **10 Mo par fichier et 20 fichiers par dépense**.
+
+Cliquez sur **Enregistrer le brouillon** pour sauvegarder les fichiers. Avant cet enregistrement, ils portent la mention **À enregistrer**. **Retirer** prépare le retrait d’un fichier ; **Annuler les retraits** permet de revenir sur ce choix. Les ajouts et retraits ne sont autorisés qu’en brouillon.
+
+Sur la fiche de dépense, **Consulter** ouvre l’aperçu et **Télécharger** récupère le fichier. Ces actions restent disponibles après validation selon vos droits d’accès. L’ajout d’un reçu ne crée aucune dépense supplémentaire et ne marque pas la dépense comme payée.
+
+Les justificatifs sont conservés dans le stockage privé `private_receipts/`, séparé des médias publics. Ce dossier doit être inclus dans les sauvegardes avec la base de données.
 
 ## 6. Générer un bon de commande
 

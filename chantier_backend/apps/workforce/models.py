@@ -14,6 +14,8 @@ class Worker(TenantOwnedModel):
     phone = models.CharField("Téléphone", max_length=40, blank=True)
     identity_type = models.CharField("Type de pièce d'identité", max_length=80, blank=True)
     identity_number = models.CharField("Numéro de pièce d'identité", max_length=120, blank=True)
+    identity_document_front = models.FileField("Document d’identité — recto", upload_to="workforce/identity/", blank=True)
+    identity_document_back = models.FileField("Document d’identité — verso", upload_to="workforce/identity/", blank=True)
     birth_date = models.DateField("Date de naissance", null=True, blank=True)
     payment_basis = models.CharField("Mode de rémunération", max_length=10, default="hourly",
         choices=[("hourly", "Horaire"), ("daily", "Journalier"), ("monthly", "Forfait mensuel")])
@@ -43,6 +45,9 @@ class TimeEntry(TenantOwnedModel):
     work_date = models.DateField()
     normal_hours = models.DecimalField(max_digits=5, decimal_places=2, default=0)
     overtime_hours = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    attendance_status = models.CharField(max_length=10, blank=True, choices=[("present", "Présent"), ("late", "Retard"), ("absent", "Absent")])
+    arrival_time = models.TimeField(null=True, blank=True)
+    departure_time = models.TimeField(null=True, blank=True)
     is_validated = models.BooleanField(default=False)
 
     class Meta:

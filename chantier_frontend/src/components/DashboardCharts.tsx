@@ -1,5 +1,6 @@
+import { FormTextField as TextField } from './FormTextField';
 import { useState } from "react";
-import { Box, Button, MenuItem, Paper, Stack, TextField, Typography } from "@mui/material";
+import { Box, Button, MenuItem, Paper, Stack, Typography } from "@mui/material";
 import { statusLabels } from "../api/workspace";
 
 type MonthlyAmount = { month: string; currency: string; amount: string | number };
@@ -41,8 +42,8 @@ export function DashboardCharts({ statuses, monthly }: { statuses?: Array<{ stat
   const radius = 75, perimeter = 2 * Math.PI * radius;
   let offset = 0;
   if (!statuses && !monthly) return null;
-  return <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: statuses && monthly ? "1fr 1.6fr" : "1fr" }, gap: 3 }}>
-    {statuses && <Paper variant="outlined" sx={{ p: 3, minWidth: 0 }}>
+  return <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", md: statuses && monthly ? "repeat(2, minmax(0, 1fr))" : "minmax(0, 1fr)" }, gap: 3 }}>
+    {statuses && <Paper variant="outlined" tabIndex={0} sx={{ p: { xs: 2, md: 2.5 }, minWidth: 0, height: { xs: 320, md: 360 }, overflowY: "auto", overscrollBehavior: "contain", scrollbarGutter: "stable" }}>
       <Typography variant="h6">Répartition des tâches</Typography><Typography variant="body2" color="text.secondary">Situation actuelle par statut</Typography>
       {!total ? <Typography color="text.secondary" py={5}>Aucune tâche dans ce périmètre.</Typography> : <>
         <Box sx={{ maxWidth: 260, mx: "auto" }}><svg viewBox="0 0 220 220" role="img" aria-label={`Répartition de ${total} tâches`} style={{ display: "block", width: "100%" }}><title>Répartition des tâches par statut</title>
@@ -52,7 +53,7 @@ export function DashboardCharts({ statuses, monthly }: { statuses?: Array<{ stat
         <Stack spacing={.5}>{statuses.map((row) => <Button key={row.status} aria-pressed={selectedStatus === row.status} onClick={() => setStatus((current) => current === row.status ? "" : row.status)} sx={{ justifyContent: "space-between", color: "text.primary", bgcolor: selectedStatus === row.status ? "#edf4ef" : undefined }}><Stack direction="row" alignItems="center" gap={1}><Box sx={{ width: 10, height: 10, borderRadius: "50%", bgcolor: palette[row.status] ?? "#39775b" }} />{statusLabels[row.status] ?? row.status}</Stack><span>{row.count} · {Math.round(row.count / total * 100)} %</span></Button>)}</Stack>
       </>}
     </Paper>}
-    {monthly && <Paper variant="outlined" sx={{ p: 3, minWidth: 0 }}>
+    {monthly && <Paper variant="outlined" tabIndex={0} sx={{ p: { xs: 2, md: 2.5 }, minWidth: 0, height: { xs: 320, md: 360 }, overflowY: "auto", overscrollBehavior: "contain", scrollbarGutter: "stable" }}>
       <Stack direction="row" alignItems="center" justifyContent="space-between" gap={2} mb={2}><Box><Typography variant="h6">Évolution des dépenses</Typography><Typography variant="body2" color="text.secondary">12 derniers mois · TTC validé ou payé · mois en cours partiel</Typography></Box>{currencies.length > 0 && <TextField select size="small" label="Devise" value={currency} onChange={(event) => setCurrency(event.target.value)} sx={{ minWidth: 95 }}>{currencies.map((value) => <MenuItem key={value} value={value}>{value}</MenuItem>)}</TextField>}</Stack>
       {!rows.length ? <Typography color="text.secondary" py={5}>Aucune dépense validée dans ce périmètre.</Typography> : <SpendingLineChart key={currency} rows={rows} currency={currency} />}
     </Paper>}

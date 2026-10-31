@@ -11,7 +11,7 @@ import { RolePermissions } from "./RolePermissions";
 import { StatusBadge } from "./StatusBadge";
 import { ExpenseDetailsView } from "./ExpenseDetails";
 
-const hidden = new Set(["id", "tenant", "deleted_at", "created_by", "updated_by", "version", "created_at", "updated_at", "file", "image", "result_file", "checksum", "push_token"]);
+const hidden = new Set(["id", "tenant", "deleted_at", "created_by", "updated_by", "version", "created_at", "updated_at", "file", "image", "result_file", "checksum", "push_token", "photos"]);
 const sections = [
   { key: "identity", label: "Informations générales", icon: <InfoOutlinedIcon fontSize="small" /> },
   { key: "relations", label: "Rattachements et intervenants", icon: <AccountTreeOutlinedIcon fontSize="small" /> },

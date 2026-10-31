@@ -6,6 +6,19 @@ from apps.workforce.models import Assignment, Certification, TimeEntry, Worker, 
 
 
 class WorkerSerializer(TenantOwnedModelSerializer):
+    def validate_identity_document(self, value):
+        from django.core.validators import FileExtensionValidator
+        FileExtensionValidator(allowed_extensions=['pdf', 'jpg', 'jpeg', 'png', 'webp'])(value)
+        if value.size > 10 * 1024 * 1024:
+            raise serializers.ValidationError("Le document ne doit pas dépasser 10 Mo.")
+        return value
+
+    def validate_identity_document_front(self, value):
+        return self.validate_identity_document(value)
+
+    def validate_identity_document_back(self, value):
+        return self.validate_identity_document(value)
+
     def validate(self, attrs):
         attrs = super().validate(attrs)
         basis = attrs.get("payment_basis", getattr(self.instance, "payment_basis", "hourly"))
@@ -36,6 +49,19 @@ class TimeEntrySerializer(TenantOwnedModelSerializer):
             raise serializers.ValidationError("Les heures ne peuvent pas etre negatives.")
         if normal + overtime > 24:
             raise serializers.ValidationError("Le total journalier ne peut pas depasser 24 heures.")
+        status = attrs.get("attendance_status", getattr(self.instance, "attendance_status", ""))
+        arrival = attrs.get("arrival_time", getattr(self.instance, "arrival_time", None))
+        departure = attrs.get("departure_time", getattr(self.instance, "departure_time", None))
+        if status == "absent":
+            if normal + overtime != 0 or arrival or departure:
+                raise serializers.ValidationError("Un absent doit avoir zéro heure et aucun horaire.")
+        elif status:
+            if not arrival or not departure or departure <= arrival:
+                raise serializers.ValidationError("Renseignez un départ après l’arrivée.")
+            from decimal import Decimal
+            minutes = departure.hour * 60 + departure.minute - arrival.hour * 60 - arrival.minute
+            if abs(normal + overtime - Decimal(minutes) / 60) > Decimal("0.01"):
+                raise serializers.ValidationError("Les heures doivent correspondre aux horaires.")
         worker = attrs.get("worker", getattr(self.instance, "worker", None))
         work_date = attrs.get("work_date", getattr(self.instance, "work_date", None))
         entries = TimeEntry.objects.filter(

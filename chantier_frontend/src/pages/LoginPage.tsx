@@ -1,7 +1,8 @@
+import { FormTextField as TextField } from '../components/FormTextField';
 import { FormEvent, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
-import { Alert, Box, Button, IconButton, InputAdornment, Paper, Stack, TextField, Typography } from "@mui/material";
+import { Alert, Box, Button, IconButton, InputAdornment, Paper, Stack, Typography } from "@mui/material";
 import ArrowForwardIcon from "@mui/icons-material/ArrowForward";
 import ConstructionIcon from "@mui/icons-material/Construction";
 import VisibilityOutlinedIcon from "@mui/icons-material/VisibilityOutlined";
@@ -35,8 +36,8 @@ export function LoginPage() {
     </Box>
     <Box sx={{ display: "grid", placeItems: "center", px: { xs: 3, sm: 6 }, py: 6, bgcolor: "#f8f9f5" }}>
       <Paper elevation={0} sx={{ width: "100%", maxWidth: 410, bgcolor: "transparent" }}>
-        <Typography variant="overline" color="primary.main">BIENVENUE SUR CHANTIER</Typography><Typography variant="h4" sx={{ fontSize: 32, mt: 1 }}>Heureux de vous retrouver.</Typography>
-        <Typography color="text.secondary" mt={1.5} mb={4}>Connectez-vous à votre espace de travail.</Typography>
+        <Typography variant="overline" color="primary.main">BIENVENUE SUR CHANTIER</Typography><Typography variant="h4" sx={{ fontSize: 24, mt: .5 }}>Heureux de vous retrouver.</Typography>
+        <Typography color="text.secondary" mt={.75} mb={2}>Connectez-vous à votre espace de travail.</Typography>
         <Stack component="form" onSubmit={handleSubmit} spacing={2.5}>
           {error && <Alert severity="error">{error}</Alert>}
           <TextField label="Adresse e-mail" type="email" autoComplete="username" value={email} onChange={(event) => setEmail(event.target.value)} required fullWidth />

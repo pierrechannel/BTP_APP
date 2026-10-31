@@ -62,6 +62,7 @@ class TenantValidationMixin:
 class TenantOwnedModelSerializer(TenantValidationMixin, serializers.ModelSerializer):
     def get_fields(self):
         fields = super().get_fields()
+        fields.pop('archived_at', None)
         identifier = AUTOMATIC_IDENTIFIERS.get(self.Meta.model._meta.label_lower)
         if identifier and identifier[0] in fields:
             field = fields[identifier[0]]

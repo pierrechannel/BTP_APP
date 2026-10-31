@@ -14,6 +14,12 @@ from apps.projects.services import InvalidProjectStatusTransition, create_projec
 
 
 class ProjectViewSet(TenantModelViewSet):
+    permission_action_map = {**TenantModelViewSet.permission_action_map, 'overview': 'read'}
+
+    @action(detail=True, methods=['get'])
+    def overview(self, request, pk=None):
+        from apps.projects.overview import project_overview
+        return Response(project_overview(request, self.get_object()))
     serializer_class = ProjectSerializer
     permission_classes = [
         IsAuthenticated,
@@ -29,8 +35,7 @@ class ProjectViewSet(TenantModelViewSet):
 
     def get_queryset(self):
         return (
-            Project.objects.filter(tenant_id=self.request.tenant_id, deleted_at__isnull=True,
-                archived_at__isnull=not (self.action == "restore" or (self.request.method in {"GET", "HEAD", "OPTIONS"} and self.request.query_params.get("archived") == "true")))
+            Project.objects.filter(tenant_id=self.request.tenant_id, deleted_at__isnull=True)
             .annotate(lots_count=Count("lots", filter=Q(lots__deleted_at__isnull=True)))
             .select_related("tenant")
         )

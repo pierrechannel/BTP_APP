@@ -9,10 +9,10 @@ const plans = [
 
 export function PlatformBillingPage() {
   return (
-    <Stack spacing={3}>
+    <Stack spacing={2}>
       <Stack direction={{ xs: "column", sm: "row" }} alignItems={{ xs: "stretch", sm: "center" }} justifyContent="space-between" spacing={2}>
         <Box>
-          <Typography variant="h4" sx={{ fontSize: { xs: 28, sm: 34 } }}>
+          <Typography variant="h4" sx={{ fontSize: { xs: 20, sm: 22 }, lineHeight: 1.3 }}>
             Abonnements
           </Typography>
           <Typography color="text.secondary">Espace de preparation pour la facturation SaaS.</Typography>

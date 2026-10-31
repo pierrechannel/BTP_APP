@@ -1,6 +1,8 @@
+import { PageHeading } from '../components/PageHeading';
+import { FormTextField as TextField } from '../components/FormTextField';
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link as RouterLink, useNavigate, useParams } from "react-router-dom";
-import { Dialog, DialogTitle, DialogContent, DialogActions, Tab, Tabs, Alert, Box, Button, Chip, Divider, LinearProgress, MenuItem, Paper, Skeleton, Stack, TextField, Typography } from "@mui/material";
+import { Dialog, DialogTitle, DialogContent, DialogActions, Tab, Tabs, Alert, Box, Button, Chip, Divider, LinearProgress, MenuItem, Paper, Skeleton, Stack, Typography } from "@mui/material";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import DescriptionOutlinedIcon from "@mui/icons-material/DescriptionOutlined";
 import AutoAwesomeOutlinedIcon from "@mui/icons-material/AutoAwesomeOutlined";
@@ -147,11 +149,9 @@ export function ReportsPage({ detail = false }: { detail?: boolean }) {
       && `${templateName(item.template)} ${item.id}`.toLocaleLowerCase().includes(historySearch.toLocaleLowerCase());
   });
 
-  return <Stack spacing={3}>
+  return <Stack spacing={2}>
     <Stack direction="row" alignItems="center" justifyContent="space-between" gap={2} flexWrap="wrap">
-      <Box><Typography variant="overline" color="primary.main">PILOTAGE DES CHANTIERS</Typography>
-        <Typography variant="h4" component="h1">{detail ? reportTitle : "Tableau de bord des rapports"}</Typography>
-        <Typography variant="body2" color="text.secondary" mt={1}>Une synthèse claire pour suivre les travaux, les finances et la sécurité.</Typography></Box>
+      <PageHeading eyebrow="PILOTAGE DES CHANTIERS" title={detail ? reportTitle : "Tableau de bord des rapports"} subtitle="Une synthèse claire pour suivre les travaux, les finances et la sécurité." />
       <Stack direction="row" gap={1}>
         {detail && <Button component={RouterLink} to="/reports" startIcon={<ArrowBackIcon />}>Rapports</Button>}
         <Button aria-label="Actualiser les rapports" startIcon={<RefreshIcon />} onClick={() => setRevision((value) => value + 1)}>Actualiser</Button>

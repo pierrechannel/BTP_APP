@@ -1,3 +1,8 @@
+import { JournalFormPage } from './pages/JournalFormPage';
+import { JournalPage } from './pages/JournalPage';
+import { AttendanceSheetPage } from "./components/AttendanceSheetPage";
+import { WorkerFormPage } from "./pages/WorkerFormPage";
+import { ExpenseFormPage } from "./pages/ExpenseFormPage";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { Alert, Box, CircularProgress, Stack, Typography } from "@mui/material";
 import { AdminLayout } from "./layout/AdminLayout";
@@ -21,6 +26,7 @@ function ResourceRoute({ resource, detail = false }: { resource: ResourceConfig;
   const { can } = useWorkspace();
   if (!can(resource.group) && !can(resource.group, "create")) return <Alert severity="info">Votre rôle ne donne pas accès à ce module.</Alert>;
   if ((!detail && resource.path === "/reports") || (detail && resource.model === "reports.reportrun")) return <ReportsPage detail={detail} />;
+  if (resource.model === 'progress.dailyreport' && !detail) return <JournalPage />;
   return detail ? <RecordDetailPage resource={resource} /> : <ResourcePage resource={resource} />;
 }
 export function App() {
@@ -40,6 +46,12 @@ export function App() {
   }
   return <WorkspaceProvider key={tenantId}><AdminLayout><Routes>
     <Route path="/" element={<DashboardPage />} />
+    <Route path="/workforce/pointage" element={<AttendanceSheetPage />} />
+    <Route path="/progress/nouveau" element={<JournalFormPage />} /><Route path="/progress/:id/modifier" element={<JournalFormPage />} />
+    <Route path="/workforce/nouveau" element={<WorkerFormPage />} />
+    <Route path="/budget/expenses/nouveau" element={<ExpenseFormPage />} />
+    <Route path="/budget/expenses/:id/modifier" element={<ExpenseFormPage />} />
+    <Route path="/workforce/:id/modifier" element={<WorkerFormPage />} />
     {allResources.flatMap((resource) => [
       <Route key={resource.path} path={resource.path} element={<ResourceRoute key={resource.path} resource={resource} />} />,
       <Route key={`${resource.path}/:id`} path={`${resource.path}/:id`} element={<ResourceRoute key={`${resource.path}/detail`} resource={resource} detail />} />,

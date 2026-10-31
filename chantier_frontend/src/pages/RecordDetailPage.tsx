@@ -1,7 +1,13 @@
+import { JournalPhotos, JournalPhoto } from '../components/JournalPhotos';
+import { ProjectOverview } from '../components/ProjectOverview';
+import { ExpenseReceipts, Receipt } from '../components/ExpenseReceipts';
+import { InvoiceAttachment } from '../components/InvoiceAttachment';
+import { financialAction } from '../api/financialActions';
+import { FormTextField as TextField } from '../components/FormTextField';
 import { useEffect, useState } from "react";
-import { Link as RouterLink, useNavigate, useParams } from "react-router-dom";
+import { Link as RouterLink, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { Alert, Box, Breadcrumbs, Button, Dialog, DialogActions, DialogContent, DialogTitle, Link, LinearProgress,
-  MenuItem, Paper, Skeleton, Stack, Tab, Tabs, TextField, Typography } from "@mui/material";
+  MenuItem, Paper, Skeleton, Stack, Tab, Tabs, Typography } from "@mui/material";
 import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
@@ -51,7 +57,13 @@ export function RecordDetailPage({ resource }: { resource: ResourceConfig }) {
   const [actionComment, setActionComment] = useState("");
   const [actionError, setActionError] = useState("");
   const [busy, setBusy] = useState(false);
-  const [section, setSection] = useState("overview");
+  const [params, setParams] = useSearchParams();
+  const [localSection, setLocalSection] = useState('overview');
+  const section = ['budget.budget', 'projects.project'].includes(resource.model) ? params.get('tab') || 'overview' : localSection;
+  const setSection = (value: string) => {
+    if (['budget.budget', 'projects.project'].includes(resource.model)) setParams(current => { const next = new URLSearchParams(current); next.set('tab', value); return next; }, { replace: true });
+    else setLocalSection(value);
+  };
   const [relatedVisited, setRelatedVisited] = useState(false);
   const [stock, setStock] = useState<Array<{ location: string; name: string; quantity: string; unit: string }>>([]);
   const endpoint = `${resource.endpoint}${id}/`;
@@ -60,7 +72,7 @@ export function RecordDetailPage({ resource }: { resource: ResourceConfig }) {
     const timer = window.setInterval(() => setRevision((value) => value + 1), 3000);
     return () => window.clearInterval(timer);
   }, [resource.model, record?.status, endpoint]);
-  useEffect(() => { setSection("overview"); setRelatedVisited(false); }, [endpoint]);
+  useEffect(() => { setLocalSection("overview"); setRelatedVisited(false); }, [endpoint]);
   const locked = record ? isRecordLocked(resource.model, record) : false;
   const deletionLocked = record ? isDeletionLocked(resource.model, record) : false;
   const writable = !resource.platformWrite || user?.is_superuser;
@@ -107,7 +119,7 @@ export function RecordDetailPage({ resource }: { resource: ResourceConfig }) {
           const project = projects.find((row) => String(row.id) === projectId);
           body.parameters = project ? { project: project.code } : {};
         }
-        const response = await api.post(`${endpoint}${action.endpoint}/`, body, { headers: versionHeaders(record) });
+        const response = await financialAction(`${endpoint}${action.endpoint}/`, body, versionHeaders(record));
         notifyChange();
         if (action.endpoint === "run") {
           navigate(`/reports/runs/${response.data.id}`); return;
@@ -124,7 +136,7 @@ export function RecordDetailPage({ resource }: { resource: ResourceConfig }) {
     && !(resource.model === "documents.approvalworkflow" && String(record?.reviewer) !== String(user?.id))
     && !(action.endpoint === "transition-status" && record?.status === "closed"));
   const invalidProgress = action?.field === "progress_percent" && (!Number.isInteger(Number(actionValue)) || Number(actionValue) < 0 || Number(actionValue) > 100);
-  const focused = ["resources.purchaseorder", "budget.budget"].includes(resource.model);
+  const focused = ["resources.purchaseorder", "budget.budget", "projects.project"].includes(resource.model);
   const hasRelated = resource.model !== "budget.budget" && relatedWorkflows(resource.model).some((link) => resourceByModel[link.model] && can(resourceByModel[link.model].group));
 
   return <Stack spacing={2}>
@@ -132,24 +144,24 @@ export function RecordDetailPage({ resource }: { resource: ResourceConfig }) {
     <Breadcrumbs><Link component={RouterLink} to="/" underline="hover">Vue d’ensemble</Link>
       <Link component={RouterLink} to={resource.path} underline="hover">{resource.label}</Link><Typography color="text.primary">Fiche</Typography></Breadcrumbs>
     {loading ? <><Skeleton width="60%" height={70} /><Skeleton variant="rounded" height={320} /></> : <>
-      <Paper variant="outlined" sx={{ p: { xs: 2, sm: 2.5 } }}><Stack direction={{ xs: "column", md: "row" }} justifyContent="space-between" gap={2}>
-        <Stack direction="row" gap={2} minWidth={0}><Box sx={{ display: { xs: "none", sm: "flex" }, alignItems: "center", justifyContent: "center", width: 48, height: 48, bgcolor: "#e3eee0", color: "primary.main", borderRadius: 1, flexShrink: 0 }}>{resource.icon}</Box><Box minWidth={0}><Typography variant="overline" color="primary.main">Fiche · {resource.singular}</Typography><Typography variant="h4" sx={{ fontSize: { xs: 21, sm: 25 }, overflowWrap: "anywhere" }}>{record ? recordTitle(record) : "Fiche indisponible"}</Typography>
-          <Stack direction="row" alignItems="center" spacing={2} mt={1} flexWrap="wrap">{Boolean(record?.status || record?.state || record?.is_validated) && <StatusBadge value={record?.status ?? record?.state ?? "validated"} />}
-            <Typography variant="body2" color="text.secondary">{record?.updated_at ? `Mis à jour le ${formatValue(record.updated_at, "updated_at")}` : resource.description}</Typography></Stack></Box></Stack>
-        <Stack direction="row" spacing={1} alignSelf="flex-start"><Button startIcon={<ArrowBackIcon />} onClick={() => navigate(resource.path)}>Retour</Button>
-          {record && writable && !locked && !resource.readOnly && !resource.immutable && can(resource.group, "update") && <Button variant="outlined" startIcon={<EditOutlinedIcon />} onClick={() => setEditing(true)}>Modifier</Button>}
+      <Paper variant="outlined" sx={{ px: { xs: 1.5, sm: 2 }, py: 1.25 }}><Stack direction={{ xs: "column", md: "row" }} justifyContent="space-between" alignItems={{ md: "center" }} gap={1}>
+        <Stack direction="row" gap={1.25} alignItems="center" minWidth={0}><Box sx={{ display: { xs: "none", sm: "flex" }, alignItems: "center", justifyContent: "center", width: 32, height: 32, bgcolor: "#e3eee0", color: "primary.main", borderRadius: 1, flexShrink: 0 }}>{resource.icon}</Box><Box minWidth={0}><Stack direction="row" gap={1.25} alignItems="baseline" flexWrap="wrap"><Typography variant="overline" color="primary.main" sx={{ fontSize: 10, lineHeight: 1.4 }}>Fiche · {resource.singular}</Typography><Typography component="h1" sx={{ fontWeight: 750, fontSize: { xs: 18, sm: 20 }, lineHeight: 1.3, overflowWrap: "anywhere" }}>{record ? recordTitle(record) : "Fiche indisponible"}</Typography></Stack>
+          <Stack direction="row" alignItems="center" gap={1.25} mt={.25} flexWrap="wrap">{Boolean(record?.status || record?.state || record?.is_validated) && <StatusBadge value={record?.status ?? record?.state ?? "validated"} />}
+            <Typography fontSize={11} color="text.secondary">{record?.updated_at ? `Mis à jour le ${formatValue(record.updated_at, "updated_at")}` : resource.description}</Typography>{record && focused && resource.model !== "projects.project" && <Stack direction="row" gap={1.5} flexWrap="wrap" alignItems="center" sx={{ fontSize: 12, "& .MuiTypography-root": { fontSize: 12 } }}>
+        {record.project != null && <Box sx={{ display: "flex", alignItems: "center", gap: .5 }}><Typography variant="caption" color="text.secondary">Chantier</Typography><RelatedValue model="projects.project" id={record.project} /></Box>}
+        {record.supplier != null && <Box sx={{ display: "flex", alignItems: "center", gap: .5 }}><Typography variant="caption" color="text.secondary">Fournisseur</Typography><RelatedValue model="resources.supplier" id={record.supplier} /></Box>}
+        {record.ordered_at != null && <Box sx={{ display: "flex", alignItems: "center", gap: .5 }}><Typography variant="caption" color="text.secondary">Commandée le</Typography><Typography variant="body2">{formatValue(record.ordered_at, "ordered_at")}</Typography></Box>}
+      </Stack>}</Stack></Box></Stack>
+        <Stack direction="row" spacing={1} alignSelf={{ xs: "flex-start", md: "center" }}><Button size="small" startIcon={<ArrowBackIcon />} onClick={() => navigate(resource.path)}>Retour</Button>
+          {record && writable && !locked && !resource.readOnly && !resource.immutable && can(resource.group, "update") && <Button size="small" variant="outlined" startIcon={<EditOutlinedIcon />} onClick={() => setEditing(true)}>Modifier</Button>}
           <Button aria-label="Actualiser la fiche" onClick={() => setRevision((value) => value + 1)} sx={{ minWidth: 36, px: 1 }}><RefreshIcon fontSize="small" /></Button>
         </Stack>
-      </Stack>{record && focused && <Stack direction="row" gap={3} flexWrap="wrap" mt={2} pt={2} sx={{ borderTop: 1, borderColor: "divider" }}>
-        {record.project != null && <Box><Typography variant="caption" color="text.secondary">Chantier</Typography><RelatedValue model="projects.project" id={record.project} /></Box>}
-        {record.supplier != null && <Box><Typography variant="caption" color="text.secondary">Fournisseur</Typography><RelatedValue model="resources.supplier" id={record.supplier} /></Box>}
-        {record.ordered_at != null && <Box><Typography variant="caption" color="text.secondary">Commandée le</Typography><Typography variant="body2">{formatValue(record.ordered_at, "ordered_at")}</Typography></Box>}
-      </Stack>}</Paper>
+      </Stack></Paper>
       {message && <Alert severity="success" onClose={() => setMessage("")}>{message}</Alert>}
       {error && <Alert severity="error" action={<Button color="inherit" onClick={() => setRevision((value) => value + 1)}>Actualiser</Button>}>{error}</Alert>}
       {record && <>
         <Tabs value={section} onChange={(_, value) => { setSection(value); if (value === "related") setRelatedVisited(true); }} variant="scrollable" scrollButtons="auto" allowScrollButtonsMobile aria-label="Sections de la fiche">
-          <Tab value="overview" label={resource.model === "reports.reportrun" ? "Rapport" : resource.model === "budget.budget" ? "Lignes budgétaires" : resource.model === "resources.purchaseorder" ? "Lignes de commande" : "Vue d’ensemble"} id="detail-tab-overview" aria-controls="detail-overview" />
+          <Tab value="overview" label={resource.model === "reports.reportrun" ? "Rapport" : resource.model === "budget.budget" ? "Postes budgétaires" : resource.model === "resources.purchaseorder" ? "Lignes de commande" : "Vue d’ensemble"} id="detail-tab-overview" aria-controls="detail-overview" />
           {resource.model === "budget.budget" && <Tab value="expenses" label="Dépenses" />}
           {resource.model === "projects.project" && can("projects") && <Tab value="lots" label="Lots" id="detail-tab-lots" aria-controls="detail-lots" />}
           {focused && <Tab value="information" label="Informations" />}
@@ -160,7 +172,11 @@ export function RecordDetailPage({ resource }: { resource: ResourceConfig }) {
         {resource.model === "budget.budget" && <BudgetSummary record={record} revision={revision} />}
         {resource.model === "budget.budget" && <Box hidden={!["overview", "expenses"].includes(section)}><BudgetWorkspace budget={record} revision={revision} mode={section === "expenses" ? "expenses" : "lines"} /></Box>}
         <Stack id="detail-overview" role="tabpanel" aria-labelledby="detail-tab-overview" hidden={section !== "overview"} spacing={2} sx={{ display: section === "overview" ? "flex" : "none" }}>
+        {resource.model === "projects.project" && <ProjectOverview project={record} revision={revision} />}
         {resource.model === "resources.purchaseorder" && <PurchaseOrderLines order={record} revision={revision} />}
+        {resource.model === "budget.expense" && <ExpenseReceipts expenseId={String(record.id)} receipts={(record.receipts || []) as Receipt[]} />}
+        {resource.model === "budget.invoice" && <InvoiceAttachment invoice={record} />}
+        {resource.model === "progress.dailyreport" && <Paper variant="outlined" sx={{ p: 2 }}><JournalPhotos photos={(record.photos || []) as JournalPhoto[]} /></Paper>}
         {resource.model === "progress.photo" && <PhotoPreview record={record} />}
         {resource.model === "reports.reportrun" && <ReportPreview record={record} />}
         {["documents.document", "documents.documentversion"].includes(resource.model) && <DocumentPreview record={record} isVersion={resource.model === "documents.documentversion"} revision={revision} />}
@@ -184,7 +200,7 @@ export function RecordDetailPage({ resource }: { resource: ResourceConfig }) {
         </Stack>
         {focused && <Box hidden={section !== "information"}><DetailInformation record={record} model={resource.model} fields={fields} /></Box>}
         {resource.model === "projects.project" && can("projects") && section === "lots" && <Box id="detail-lots" role="tabpanel" aria-labelledby="detail-tab-lots"><RelatedRecords model={resource.model} record={record} revision={revision} onlyModel="projects.lot" /></Box>}
-        {hasRelated && <Box id="detail-related" role="tabpanel" aria-labelledby="detail-tab-related" hidden={section !== "related"}>{relatedVisited && <RelatedRecords model={resource.model} record={record} revision={revision} />}</Box>}
+        {hasRelated && <Box id="detail-related" role="tabpanel" aria-labelledby="detail-tab-related" hidden={section !== "related"}>{(relatedVisited || section === 'related') && <RelatedRecords model={resource.model} record={record} revision={revision} />}</Box>}
         <Stack id="detail-tracking" role="tabpanel" aria-labelledby="detail-tab-tracking" hidden={section !== "tracking"} spacing={2} sx={{ display: section === "tracking" ? "flex" : "none" }}>
           <RecordTracking record={record} />
           {writable && !deletionLocked && !resource.readOnly && !resource.immutable && can(resource.group, "delete") && <Paper variant="outlined" sx={{ p: 2.5 }}><Typography variant="subtitle2" fontWeight={700}>Gestion de la fiche</Typography><Typography variant="body2" color="text.secondary" my={1}>La suppression retire cet élément des listes et conserve son historique.</Typography><Button color="error" variant="outlined" startIcon={<DeleteOutlineIcon />} onClick={() => { setDeleting(true); setActionError(""); }}>Supprimer cet élément</Button></Paper>}
@@ -200,8 +216,8 @@ export function RecordDetailPage({ resource }: { resource: ResourceConfig }) {
         {action?.endpoint === "run" && <Alert severity="info" sx={{ mb: 2 }}>Périmètre : {projectId ? String(projects.find((row) => String(row.id) === projectId)?.name ?? "Chantier sélectionné") : "Tous les chantiers accessibles"}.</Alert>}
         {action?.field && (choices ? <TextField select fullWidth label="Nouvel état" value={actionValue} onChange={(event) => setActionValue(event.target.value)}>{choices.map(([value, label]) => <MenuItem key={value} value={value}>{label}</MenuItem>)}</TextField>
           : <TextField autoFocus fullWidth label="Avancement (%)" type="number" value={actionValue} error={Boolean(invalidProgress)} helperText={invalidProgress ? "Saisissez un entier entre 0 et 100." : ""} inputProps={{ min: 0, max: 100, step: 1 }} onChange={(event) => setActionValue(event.target.value)} />)}
-        {action?.comment && <TextField fullWidth multiline minRows={3} label={action.endpoint === "mark-failed" ? "Motif de l’échec" : "Commentaire (facultatif)"} value={actionComment} onChange={(event) => setActionComment(event.target.value)} />}
-      </DialogContent><DialogActions sx={{ p: 3 }}><Button disabled={busy} onClick={() => { setAction(null); setDeleting(false); }}>Annuler</Button><Button variant="contained" color={deleting ? "error" : "primary"} disabled={busy || Boolean(invalidProgress) || Boolean(action?.field && actionValue === "") || Boolean(action?.endpoint === "mark-failed" && !actionComment.trim())} onClick={execute}>{busy ? "Traitement…" : deleting ? "Supprimer" : "Confirmer"}</Button></DialogActions>
+        {action?.comment && <TextField fullWidth multiline minRows={3} required={action.endpoint === "correction"} label={action.endpoint === "correction" ? "Motif de correction (obligatoire)" : action.endpoint === "mark-failed" ? "Motif de l’échec" : "Commentaire (facultatif)"} value={actionComment} onChange={(event) => setActionComment(event.target.value)} />}
+      </DialogContent><DialogActions sx={{ p: 3 }}><Button disabled={busy} onClick={() => { setAction(null); setDeleting(false); }}>Annuler</Button><Button variant="contained" color={deleting ? "error" : "primary"} disabled={busy || Boolean(invalidProgress) || Boolean(action?.field && actionValue === "") || Boolean(["mark-failed", "correction"].includes(action?.endpoint || "") && !actionComment.trim())} onClick={execute}>{busy ? "Traitement…" : deleting ? "Supprimer" : "Confirmer"}</Button></DialogActions>
     </Dialog>
   </Stack>;
 }

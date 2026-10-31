@@ -1,5 +1,6 @@
+import { FormTextField as TextField } from '../components/FormTextField';
 import { ReactNode, useEffect, useMemo, useState } from "react";
-import { Alert, Box, Button, Chip, Paper, Stack, TextField, Typography } from "@mui/material";
+import { Alert, Box, Button, Chip, Paper, Stack, Typography } from "@mui/material";
 import {
   DataGrid,
   GridColDef,
@@ -91,10 +92,10 @@ export function PlatformTable({
     </Stack> });
 
   return (
-    <Stack spacing={3}>
+    <Stack spacing={2}>
       <Stack direction={{ xs: "column", sm: "row" }} alignItems={{ xs: "stretch", sm: "center" }} justifyContent="space-between" spacing={2}>
         <Box sx={{ minWidth: 0 }}>
-          <Typography variant="h4" sx={{ fontSize: { xs: 28, sm: 34 } }}>
+          <Typography variant="h4" sx={{ fontSize: { xs: 20, sm: 22 }, lineHeight: 1.3 }}>
             {title}
           </Typography>
           <Typography color="text.secondary">{subtitle}</Typography>

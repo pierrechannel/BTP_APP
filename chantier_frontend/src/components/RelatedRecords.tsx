@@ -1,3 +1,6 @@
+import { IconButton, Tooltip } from '@mui/material';
+import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined';
+import { PhotoTile } from './JournalPhotos';
 import { useEffect, useState } from "react";
 import { Link as RouterLink, useNavigate } from "react-router-dom";
 import { Alert, Box, Button, Divider, LinearProgress, Paper, Stack, Tab, Tabs, Typography } from "@mui/material";
@@ -56,7 +59,7 @@ export function RelatedRecords({ model, record, revision, onlyModel }: { model: 
   if (model === "equipment.maintenanceplan") defaults.equipment = record.equipment;
   const documentAdmin = user?.is_superuser || user?.memberships.some((item) => item.tenant.id === tenantId && item.role === "admin" && item.is_active);
   const sharingAllowed = resource.model !== "documents.documentacl" || documentAdmin || String(record.created_by) === String(user?.id);
-  const canCreate = sharingAllowed && !resource.readOnly && can(resource.group, "create") && (!resource.platformWrite || user?.is_superuser);
+  const canCreate = !(model === 'progress.dailyreport' && record.status !== 'draft') && sharingAllowed && !resource.readOnly && can(resource.group, "create") && (!resource.platformWrite || user?.is_superuser);
   const columns: GridColDef[] = resource.columns.filter((name) => name !== field).slice(0, 5).map((name) => ({
     field: name, headerName: fieldLabel(name), minWidth: 140, flex: 1,
     renderCell: ({ value }) => relationModels[name] ? <RelatedValue model={name === "template" && resource.group === "qhse" ? "qhse.inspectiontemplate" : relationModels[name]} id={value} />
@@ -79,12 +82,13 @@ export function RelatedRecords({ model, record, revision, onlyModel }: { model: 
       {loading && <LinearProgress aria-label="Chargement des données associées" />}
       {error && <Alert severity="error" action={<Button onClick={() => setRevision((value) => value + 1)}>Réessayer</Button>}>{error}</Alert>}
       {!loading && !error && !rows.length && <Typography color="text.secondary" py={2}>Aucun élément associé pour le moment.</Typography>}
-      {rows.length > 0 && <Box sx={{ display: { xs: "none", md: "block" }, border: 1, borderColor: "divider", borderRadius: 1, overflow: "hidden" }}>
+      {resource.model === 'progress.photo' && <Box sx={{ display: 'grid', gridAutoFlow: 'column', gridAutoColumns: { xs: '220px', sm: '260px' }, overflowX: 'auto', gap: 2, py: 1.5 }}>{rows.map(row => <Paper key={row.id} variant="outlined" sx={{ p: 1.5, minWidth: 0 }}><PhotoTile id={String(row.id)} imageHeight={180} actions={<Tooltip title="Voir la fiche"><IconButton component={RouterLink} to={`${resource.path}/${row.id}`} size="small" aria-label="Voir la fiche de la photo"><VisibilityOutlinedIcon fontSize="small" /></IconButton></Tooltip>} /></Paper>)}</Box>}
+      {resource.model !== 'progress.photo' && rows.length > 0 && <Box sx={{ display: { xs: "none", md: "block" }, border: 1, borderColor: "divider", borderRadius: 1, overflow: "hidden" }}>
         <DataGrid key={`${resource.model}:${field}`} rows={rows} columns={columns} autoHeight loading={loading} rowHeight={52} columnHeaderHeight={42} disableRowSelectionOnClick disableColumnFilter localeText={tableLocale}
           initialState={{ pagination: { paginationModel: { pageSize: 8, page: 0 } } }} pageSizeOptions={[8, 25, 50]}
           onRowClick={({ id }) => navigate(`${resource.path}/${id}`)} sx={{ ...dataTableSx, "& .MuiDataGrid-row": { cursor: "pointer" } }} />
       </Box>}
-      <Stack divider={<Divider />} sx={{ display: { xs: "flex", md: "none" } }}>
+      <Stack divider={<Divider />} sx={{ display: resource.model === "progress.photo" ? "none" : { xs: "flex", md: "none" } }}>
         {rows.slice(0, limit).map((row) => <Stack key={row.id} direction={{ xs: "column", sm: "row" }} gap={2} py={1.5} alignItems={{ sm: "center" }}>
           <Box flex={1} minWidth={0}>
             <Button component={RouterLink} to={`${resource.path}/${row.id}`} sx={{ px: 0, justifyContent: "flex-start", textAlign: "left" }}>{recordTitle(row)}</Button>

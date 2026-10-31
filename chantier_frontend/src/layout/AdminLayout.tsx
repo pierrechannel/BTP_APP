@@ -78,7 +78,7 @@ export function AdminLayout({ children }: { children: ReactNode }) {
       <Drawer variant="temporary" open={mobileOpen} onClose={() => setMobileOpen(false)} ModalProps={{ keepMounted: true }} sx={{ display: { xs: "block", md: "none" }, '& .MuiDrawer-paper': { width: drawerWidth, border: 0 } }}>{drawer}</Drawer>
       <Drawer variant="permanent" sx={{ display: { xs: "none", md: "block" }, '& .MuiDrawer-paper': { width: drawerWidth, border: 0 } }}>{drawer}</Drawer>
     </Box>
-    <Box component="main" sx={{ ml: { md: `${drawerWidth}px` }, pt: "108px", px: { xs: 2, sm: 3, lg: 4 }, pb: 5, minWidth: 0 }}>
+    <Box component="main" sx={{ ml: { md: `${drawerWidth}px` }, pt: "92px", px: { xs: 2, sm: 3, lg: 4 }, pb: 5, minWidth: 0 }}>
       <Box sx={{ maxWidth: 1600, mx: "auto" }} key={tenantId}>{error && <Typography color="error" mb={2}>{error}</Typography>}{children}</Box>
     </Box>
   </Box>;

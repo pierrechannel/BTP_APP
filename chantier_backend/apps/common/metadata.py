@@ -1,6 +1,7 @@
 from rest_framework.metadata import SimpleMetadata
 from rest_framework import serializers
 from django.core.exceptions import FieldDoesNotExist
+from django.db.models import Field
 
 
 class ApplicationMetadata(SimpleMetadata):
@@ -31,6 +32,6 @@ class ApplicationMetadata(SimpleMetadata):
                 model_field = model._meta.get_field(field.field_name)
             except FieldDoesNotExist:
                 return info
-            if model_field.has_default() and not callable(model_field.default):
+            if isinstance(model_field, Field) and model_field.has_default() and not callable(model_field.default):
                 info["default"] = model_field.default
         return info

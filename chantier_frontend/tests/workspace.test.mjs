@@ -111,3 +111,11 @@ test("version headers preserve optimistic concurrency and amounts retain currenc
   const error = new axios.AxiosError("Conflict", "ERR_BAD_REQUEST", undefined, null, { status: 409 });
   assert.match(errorMessage(error), /Actualisez/);
 });
+
+test('expense totals sum before rounding and match server half-up rounding', () => {
+  const { expenseLinesTotal, financialTotal } = loadWorkflows();
+  assert.equal(expenseLinesTotal([{ quantity: '0.001', unit_price: '2.50' }, { quantity: '0.001', unit_price: '2.50' }]), '0.01');
+  assert.equal(expenseLinesTotal([]), '0.00');
+  assert.equal(financialTotal('0.10', '0.20'), '0.30');
+  assert.throws(() => expenseLinesTotal([{ quantity: '-1', unit_price: '2' }]));
+});

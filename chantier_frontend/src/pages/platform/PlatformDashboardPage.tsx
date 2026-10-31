@@ -1,6 +1,8 @@
+import { PageHeading } from '../../components/PageHeading';
+import { FormTextField as TextField } from '../../components/FormTextField';
 import { useState } from 'react';
 import { Link as RouterLink, useNavigate } from 'react-router-dom';
-import { Alert, Box, Button, Chip, LinearProgress, MenuItem, Paper, Skeleton, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Typography } from '@mui/material';
+import { Alert, Box, Button, Chip, LinearProgress, MenuItem, Paper, Skeleton, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Typography } from '@mui/material';
 import BusinessOutlinedIcon from '@mui/icons-material/BusinessOutlined';
 import PeopleOutlineIcon from '@mui/icons-material/PeopleOutline';
 import ConstructionOutlinedIcon from '@mui/icons-material/ConstructionOutlined';
@@ -22,9 +24,9 @@ export function PlatformDashboardPage() {
   const date = (value: string) => new Intl.DateTimeFormat('fr-FR', { day: '2-digit', month: 'short', timeZone: 'Africa/Bujumbura' }).format(new Date(value));
   const labels = { events: 'Événements d’audit', users: 'Nouveaux comptes', tenants: 'Nouvelles entreprises', projects: 'Nouveaux chantiers' };
   const failures = (data?.sync_failed ?? 0) + (data?.reports_failed ?? 0);
-  return <Stack spacing={3}>
+  return <Stack spacing={2}>
     <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" gap={2}>
-      <Box><Typography variant="overline" color="primary.main">ADMINISTRATION PLATEFORME</Typography><Typography variant="h4" component="h1">Tableau de bord</Typography><Typography variant="body2" color="text.secondary" mt={1}>Adoption, activité des entreprises et suivi des traitements, sur toute la plateforme.</Typography></Box>
+      <PageHeading eyebrow="ADMINISTRATION PLATEFORME" title="Tableau de bord" subtitle="Adoption, activité des entreprises et suivi des traitements, sur toute la plateforme." />
       <Stack direction="row" gap={1} alignItems="center"><TextField select size="small" label="Période d’activité" value={days} onChange={(e) => setDays(Number(e.target.value))} sx={{ minWidth: 160 }}>{[7, 30, 90].map((value) => <MenuItem key={value} value={value}>{value} derniers jours</MenuItem>)}</TextField><Button variant="outlined" startIcon={<RefreshIcon />} disabled={loading} onClick={refresh}>Actualiser</Button></Stack>
     </Stack>
     {error && <Alert severity="error" action={<Button color="inherit" onClick={refresh}>Réessayer</Button>}>{error}</Alert>}

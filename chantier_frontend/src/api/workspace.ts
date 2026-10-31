@@ -47,15 +47,17 @@ export function errorMessage(error: unknown): string {
 }
 
 const labels: Record<string, string> = {
+  invoice: "Facture liée", identity_document_front: "Document d’identité — recto", identity_document_back: "Document d’identité — verso",
   identity_type: "Type de pièce d’identité", identity_number: "Numéro de pièce d’identité", birth_date: "Date de naissance",
   payment_basis: "Mode de rémunération", daily_rate: "Prix journalier", monthly_rate: "Forfait mensuel", details: "Lignes de dépense",
-  project_name: "Chantier", lot_name: "Lot", spent: "Consommé TTC", remaining: "Disponible", material_name: "Matériau", order_status: "Statut de la commande",
+  project_name: "Chantier", lot_name: "Lot", spent: "Consommé TTC", remaining: "Reste avant engagements", committed: "Engagé (soumis)", available: "Disponible après engagements", material_name: "Matériau", order_status: "Statut de la commande",
   name: "Nom", title: "Titre", code: "Code", reference: "Référence", description: "Description", status: "Statut",
   project: "Chantier", lot: "Lot", parent: "Élément parent", client_name: "Maître d’ouvrage", address: "Adresse",
   planned_start_date: "Début prévu", planned_end_date: "Fin prévue", work_type: "Type de travaux", contract_amount: "Montant du marché",
   currency: "Devise", default_currency: "Devise", progress_percent: "Avancement", supplier_name: "Fournisseur", supplier: "Fournisseur",
   lots_count: "Nombre de lots",
-  date: "Date", amount: "Montant", amount_excluding_tax: "Montant HT", tax_amount: "Taxes", amount_including_tax: "Montant TTC",
+  correction_reason: "Motif de correction", submitted_at: "Soumis le", validated_at: "Validé le", validated_by: "Validé par",
+  date: "Date", amount: "Montant", total_amount: "Budget total", total_expenses_amount: "Dépenses totales TTC", amount_excluding_tax: "Montant HT", tax_amount: "Taxes", amount_including_tax: "Montant TTC",
   budget: "Budget", budget_line: "Ligne budgétaire", category: "Catégorie", label: "Libellé", unit: "Unité", unit_price: "Prix unitaire",
   first_name: "Prénom", last_name: "Nom", job_title: "Métier", hourly_rate: "Taux horaire", equipment_type: "Type de matériel",
   serial_number: "N° de série", state: "État", daily_cost: "Coût journalier", report_date: "Date du rapport", weather: "Météo",

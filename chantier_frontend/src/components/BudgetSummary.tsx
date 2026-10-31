@@ -14,9 +14,9 @@ export function BudgetSummary({ record, revision }: { record: ApiRecord; revisio
     return () => controller.abort();
   }, [record.id, revision]);
   return <Paper variant="outlined" sx={{ p: 3 }}><Typography variant="h6" mb={2}>Situation budgétaire</Typography>
-    {error ? <Alert severity="error">{error}</Alert> : !summary ? <LinearProgress /> : <Stack direction={{ xs: "column", sm: "row" }} gap={4}>
-      {[["planned", "Prévu"], ["spent", "Dépenses validées et payées"], ["remaining", "Disponible"]].map(([key, label]) => <Box flex={1} key={key}>
-        <Typography variant="body2" color="text.secondary">{label}</Typography><Typography variant="h5" color={key === "remaining" && Number(summary[key]) < 0 ? "error.main" : "text.primary"}>{formatValue(summary[key], "amount")} <Typography component="span" variant="body2">{String(summary.currency)}</Typography></Typography>
+    {error ? <Alert severity="error">{error}</Alert> : !summary ? <LinearProgress /> : <Stack direction={{ xs: "column", sm: "row" }} gap={3} flexWrap="wrap">
+      {[["planned", "Prévu TTC"], ["committed", "Engagé (soumis)"], ["spent", "Consommé (validé + payé)"], ["paid", "Dont payé"], ["available", "Disponible après engagements"]].map(([key, label]) => <Box flex={1} minWidth={160} key={key}>
+        <Typography variant="body2" color="text.secondary">{label}</Typography><Typography variant="h5" color={key === "available" && Number(summary[key]) < 0 ? "error.main" : "text.primary"}>{formatValue(summary[key], "amount")} <Typography component="span" variant="body2">{String(summary.currency)}</Typography></Typography>
       </Box>)}
     </Stack>}
   </Paper>;

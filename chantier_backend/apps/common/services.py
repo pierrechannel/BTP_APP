@@ -17,6 +17,10 @@ def check_deletion_allowed(instance):
             continue
         visited.add(key)
         financial = current._meta.label_lower in {"budget.expense", "budget.invoice"}
+        if current._meta.label_lower == 'progress.dailyreport' and current.status != 'draft':
+            raise ValidationError('Un rapport soumis ou validé ne peut pas être supprimé.')
+        if current._meta.label_lower == 'progress.photo' and current.daily_report_id and current.daily_report.status != 'draft':
+            raise ValidationError('Les photos d’un rapport soumis ou validé sont protégées.')
         if (current._meta.label_lower == "resources.purchaseorder" and current.status != "draft"
                 or current._meta.label_lower == "resources.purchaseorderline" and current.purchase_order.status != "draft"):
             raise ValidationError("Une commande envoyee ou finalisee et ses lignes ne peuvent pas etre supprimees.")

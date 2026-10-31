@@ -1,5 +1,6 @@
+import { FormTextField as TextField } from './FormTextField';
 import { FormEvent, useEffect, useState } from 'react';
-import { Alert, Box, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, LinearProgress, MenuItem, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Typography } from '@mui/material';
+import { Alert, Box, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, LinearProgress, MenuItem, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Typography } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import { api } from '../api/client';
 import { ApiRecord } from '../api/types';
@@ -10,7 +11,7 @@ import { businessDialogSx } from './BusinessFormLayout';
 type SheetRow = { worker: string; name: string; job_title: string; entry_id: string | null; version: number | null; task_name: string; normal_hours: string; overtime_hours: string; is_validated: boolean; is_archived: boolean };
 type DraftRow = SheetRow & { originalNormal: string; originalOvertime: string };
 const changed = (row: DraftRow) => row.normal_hours !== row.originalNormal || row.overtime_hours !== row.originalOvertime;
-const locked = (row: SheetRow) => row.is_validated || row.is_archived;
+const locked = (row: SheetRow) => row.is_validated;
 const rowKey = (row: SheetRow) => row.entry_id || row.worker;
 const today = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Bujumbura', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 const hours = (value: number) => value.toLocaleString('fr-FR', { maximumFractionDigits: 2 });
@@ -92,7 +93,7 @@ export function AttendanceSheetDialog({ open, onClose, onSaved, initialProject, 
           <TableCell sx={{ width: '38%' }}>COLLABORATEUR</TableCell><TableCell>HEURES NORMALES</TableCell><TableCell>HEURES SUPPL.</TableCell><TableCell align="right">TOTAL</TableCell>
         </TableRow></TableHead><TableBody>{rows.filter((row) => `${row.name} ${row.job_title}`.toLocaleLowerCase().includes(search.toLocaleLowerCase())).map((row) => {
           const amount = Number(row.normal_hours || 0) + Number(row.overtime_hours || 0);
-          return <TableRow key={rowKey(row)}><TableCell><Typography fontSize={13} fontWeight={700}>{row.name}</Typography><Typography fontSize={12} color="#66707d">{row.job_title}{row.task_name ? ` · ${row.task_name}` : ''}</Typography>{locked(row) && <Chip size="small" label={row.is_archived ? 'Archivé' : 'Validé'} sx={{ mt: .5 }} />}</TableCell>
+          return <TableRow key={rowKey(row)}><TableCell><Typography fontSize={13} fontWeight={700}>{row.name}</Typography><Typography fontSize={12} color="#66707d">{row.job_title}{row.task_name ? ` · ${row.task_name}` : ''}</Typography>{locked(row) && <Chip size="small" label={'Validé'} sx={{ mt: .5 }} />}</TableCell>
             {(['normal_hours', 'overtime_hours'] as const).map((field) => <TableCell key={field}><TextField size="small" type="number" fullWidth value={row[field]} disabled={saving || !editable(row)} error={amount > 24} placeholder="—" inputProps={{ min: 0, max: 24, step: .01, 'aria-label': `${field === 'normal_hours' ? 'Heures normales' : 'Heures supplémentaires'} · ${row.name}`, style: { textAlign: 'right' } }} onChange={(e) => update(rowKey(row), field, e.target.value)} /></TableCell>)}
             <TableCell align="right" sx={{ fontWeight: 700, whiteSpace: 'nowrap', color: amount > 24 ? '#a42323' : '#24292e' }}>{hours(amount)} h</TableCell>
           </TableRow>;

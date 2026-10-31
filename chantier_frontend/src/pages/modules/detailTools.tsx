@@ -55,7 +55,7 @@ export function DetailHeader({
       spacing={2}
     >
       <Box sx={{ minWidth: 0 }}>
-        <Typography variant="h4" sx={{ fontSize: { xs: 28, sm: 34 } }} noWrap>
+        <Typography variant="h4" sx={{ fontSize: { xs: 20, sm: 22 }, lineHeight: 1.3 }} noWrap>
           {title}
         </Typography>
         <Typography color="text.secondary" noWrap>

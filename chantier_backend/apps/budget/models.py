@@ -1,6 +1,7 @@
 from django.db import models
 
 from apps.common.models import TenantOwnedModel
+from apps.budget.receipts import receipt_path, receipt_storage, invoice_path
 
 
 class Budget(TenantOwnedModel):
@@ -25,6 +26,7 @@ class Expense(TenantOwnedModel):
     REJECTED = "rejected"
 
     budget_line = models.ForeignKey(BudgetLine, on_delete=models.PROTECT, related_name="expenses")
+    invoice = models.OneToOneField("Invoice", null=True, blank=True, on_delete=models.PROTECT, related_name="expense")
     date = models.DateField()
     supplier_name = models.CharField(max_length=255, blank=True)
     details = models.JSONField("Lignes de dépense", default=list, blank=True)
@@ -35,7 +37,17 @@ class Expense(TenantOwnedModel):
     status = models.CharField(max_length=20, default=DRAFT)
 
 
+class ExpenseReceipt(TenantOwnedModel):
+    expense = models.ForeignKey(Expense, on_delete=models.CASCADE, related_name='receipts')
+    file = models.FileField(upload_to=receipt_path, storage=receipt_storage)
+    original_name = models.CharField(max_length=255)
+    size = models.PositiveIntegerField()
+
+
 class Invoice(TenantOwnedModel):
+    file = models.FileField("Fichier de la facture", upload_to=invoice_path, storage=receipt_storage, blank=True)
+    original_name = models.CharField(max_length=255, blank=True)
+    file_size = models.PositiveIntegerField(default=0)
     DRAFT = "draft"
     VALIDATED = "validated"
     PAID = "paid"

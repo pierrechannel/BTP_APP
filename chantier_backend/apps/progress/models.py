@@ -4,6 +4,10 @@ from apps.common.models import TenantOwnedModel
 
 
 class DailyReport(TenantOwnedModel):
+    correction_reason = models.TextField(blank=True)
+    submitted_at = models.DateTimeField(null=True, blank=True)
+    validated_at = models.DateTimeField(null=True, blank=True)
+    validated_by = models.ForeignKey('accounts.User', null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
     DRAFT = "draft"
     SUBMITTED = "submitted"
     VALIDATED = "validated"

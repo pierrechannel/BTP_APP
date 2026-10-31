@@ -19,6 +19,9 @@ class SheetScope(serializers.Serializer):
 
 
 class SheetLine(serializers.Serializer):
+    attendance_status = serializers.ChoiceField(choices=['present', 'late', 'absent'], required=False)
+    arrival_time = serializers.TimeField(required=False, allow_null=True)
+    departure_time = serializers.TimeField(required=False, allow_null=True)
     worker = serializers.UUIDField()
     entry_id = serializers.UUIDField(required=False, allow_null=True)
     version = serializers.IntegerField(min_value=1, required=False)
@@ -32,9 +35,9 @@ class SheetInput(SheetScope):
 
 def assigned_workers(tenant_id, project, work_date):
     assignments = Assignment.objects.filter(tenant_id=tenant_id, project=project,
-        deleted_at__isnull=True, archived_at__isnull=True, start_date__lte=work_date).filter(
+        deleted_at__isnull=True, start_date__lte=work_date).filter(
         Q(end_date__isnull=True) | Q(end_date__gte=work_date))
-    return Worker.objects.filter(tenant_id=tenant_id, deleted_at__isnull=True, archived_at__isnull=True,
+    return Worker.objects.filter(tenant_id=tenant_id, deleted_at__isnull=True,
         pk__in=assignments.values('worker_id')).order_by('last_name', 'first_name')
 
 
@@ -42,7 +45,7 @@ def sheet_scope(request, data):
     scope = SheetScope(data=data)
     scope.is_valid(raise_exception=True)
     project = get_object_or_404(Project, pk=scope.validated_data['project'], tenant_id=request.tenant_id,
-        deleted_at__isnull=True, archived_at__isnull=True)
+        deleted_at__isnull=True)
     return project, scope.validated_data['work_date']
 
 
@@ -59,11 +62,15 @@ def read_sheet(request):
         for entry in by_worker.get(worker.pk) or [None]:
             rows.append({'worker': worker.pk, 'name': f'{worker.first_name} {worker.last_name}',
                 'job_title': worker.job_title, 'entry_id': entry.pk if entry else None,
+                'team': ' / '.join(sorted(set(Assignment.objects.filter(tenant_id=request.tenant_id, project=project, worker=worker, deleted_at__isnull=True, start_date__lte=work_date).filter(Q(end_date__isnull=True) | Q(end_date__gte=work_date)).exclude(role='').values_list('role', flat=True)))),
+                'attendance_status': entry.attendance_status if entry else '',
+                'arrival_time': entry.arrival_time if entry else None,
+                'departure_time': entry.departure_time if entry else None,
                 'version': entry.version if entry else None, 'task_name': entry.task.name if entry and entry.task else '',
                 'normal_hours': str(entry.normal_hours) if entry else '',
                 'overtime_hours': str(entry.overtime_hours) if entry else '',
                 'is_validated': entry.is_validated if entry else False,
-                'is_archived': bool(entry.archived_at) if entry else False})
+                'is_archived': False})
     return {'project': project.pk, 'work_date': work_date, 'rows': rows}
 
 
@@ -92,7 +99,7 @@ def save_sheet(view, request):
             if not HasRolePermission().has_permission(request, update_view):
                 raise PermissionDenied('Vous ne pouvez pas modifier les pointages existants.')
             instance = get_object_or_404(TimeEntry, pk=entry_id, worker=worker, project=project,
-                work_date=work_date, tenant_id=request.tenant_id, deleted_at__isnull=True, archived_at__isnull=True)
+                work_date=work_date, tenant_id=request.tenant_id, deleted_at__isnull=True)
             if row.get('version') != instance.version:
                 raise VersionConflict()
         elif TimeEntry.objects.filter(tenant_id=request.tenant_id, worker=worker, project=project,
@@ -100,6 +107,7 @@ def save_sheet(view, request):
             raise VersionConflict('Un pointage existe déjà pour ce collaborateur. Rechargez la feuille.')
         data = {'worker': str(worker.pk), 'project': str(project.pk), 'work_date': work_date,
             'normal_hours': row['normal_hours'], 'overtime_hours': row['overtime_hours']}
+        data.update({key: row[key] for key in ('attendance_status', 'arrival_time', 'departure_time') if key in row})
         serializer = view.get_serializer(instance, data=data, partial=bool(instance))
         try:
             serializer.is_valid(raise_exception=True)

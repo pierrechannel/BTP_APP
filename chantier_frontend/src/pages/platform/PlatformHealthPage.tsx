@@ -1,3 +1,4 @@
+import { PageHeading } from '../../components/PageHeading';
 import { Alert, Box, Button, Chip, Paper, Skeleton, Stack, Typography } from "@mui/material";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import { usePlatformOverview } from "../../state/platform";
@@ -8,8 +9,8 @@ export function PlatformHealthPage() {
     { label: "Synchronisation", value: data ? `${data.sync_pending} en attente` : "Indisponible", detail: data ? `${data.sync_failed} mutation(s) en échec` : "", warning: Boolean(data?.sync_failed) },
     { label: "Génération de rapports", value: data ? `${data.reports_pending} en attente` : "Indisponible", detail: data ? `${data.reports_failed} rapport(s) en échec` : "", warning: Boolean(data?.reports_failed) },
   ];
-  return <Stack spacing={3}><Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" gap={2}>
-    <Box><Typography variant="overline" color="primary.main">EXPLOITATION</Typography><Typography variant="h4">État du système</Typography><Typography color="text.secondary" mt={1}>État de la connexion et des files de traitement.</Typography></Box>
+  return <Stack spacing={2}><Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" gap={2}>
+    <PageHeading eyebrow="EXPLOITATION" title="État du système" subtitle="État de la connexion et des files de traitement." />
     <Button variant="outlined" startIcon={<RefreshIcon />} onClick={refresh} disabled={loading} sx={{ alignSelf: "flex-start" }}>Vérifier maintenant</Button></Stack>
     {error && <Alert severity="error">{error}</Alert>}
     <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", md: "repeat(3, 1fr)" }, gap: 2 }}>

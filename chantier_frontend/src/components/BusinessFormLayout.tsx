@@ -1,5 +1,6 @@
+import { expenseLinesTotal, financialTotal } from '../api/workflows';
 import { ReactNode } from "react";
-import { Box, Button, Chip, IconButton, Stack, SvgIcon, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Typography } from "@mui/material";
+import { Alert, Box, Chip, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Typography } from "@mui/material";
 import { ApiRecord } from "../api/types";
 
 export const businessDialogSx = {
@@ -21,77 +22,21 @@ const tableSx = {
   '& td': { bgcolor: '#fff', py: 2, borderColor: '#e2e5e9', verticalAlign: 'top' },
 };
 
-/* ---------- Lignes de dépense ---------- */
-
-// Clés JSON utilisées dans le champ `details`. À ajuster si votre API en utilise d'autres.
-const LINE_KEYS = { description: 'description', category: 'category', quantity: 'quantity', unitPrice: 'unit_price' } as const;
-type RawLine = Record<string, unknown>;
-
 const money = (value: number) => Number.isFinite(value) ? value.toLocaleString('fr-FR', { maximumFractionDigits: 2 }) : '—';
-const num = (value: unknown) => { const n = Number(value); return Number.isFinite(n) ? n : 0; };
-const lineAmount = (line: RawLine) => num(line[LINE_KEYS.quantity]) * num(line[LINE_KEYS.unitPrice]);
-
-function parseLines(raw: unknown): RawLine[] {
-  try {
-    const parsed = JSON.parse(String(raw || '[]'));
-    return Array.isArray(parsed) ? parsed.filter((l): l is RawLine => !!l && typeof l === 'object') : [];
-  } catch { return []; /* La validation du formulaire signale les valeurs invalides. */ }
+function parseLines(raw: unknown): Array<Record<string, unknown>> {
+  try { const rows = JSON.parse(String(raw || '[]')); return Array.isArray(rows) ? rows : []; } catch { return []; }
 }
-
-const TrashIcon = () => <SvgIcon fontSize="small" viewBox="0 0 24 24"><path d="M6 19a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" /></SvgIcon>;
-
-const cellInputSx = { '& .MuiOutlinedInput-root': { minHeight: 40 } };
-
-function ExpenseLinesEditor({ lines, onChange }: { lines: RawLine[]; onChange: (next: RawLine[]) => void }) {
-  const update = (index: number, patch: RawLine) => onChange(lines.map((l, i) => i === index ? { ...l, ...patch } : l));
-  const remove = (index: number) => onChange(lines.filter((_, i) => i !== index));
-  const add = () => onChange([...lines, { [LINE_KEYS.description]: '', [LINE_KEYS.category]: '', [LINE_KEYS.quantity]: 1, [LINE_KEYS.unitPrice]: 0 }]);
-  const numeric = (index: number, key: string) => (e: { target: { value: string } }) => update(index, { [key]: e.target.value === '' ? 0 : num(e.target.value.replace(',', '.')) });
-  return <Box>
-    <Stack direction="row" alignItems="baseline" justifyContent="space-between" mb={1}>
-      <Typography fontWeight={700} fontSize={14}>Lignes de dépense <Typography component="span" fontSize={14} color="#66707d">({lines.length})</Typography></Typography>
-      <Typography fontSize={12} color="#66707d">Une ligne par justificatif ou par poste</Typography>
-    </Stack>
-    <TableContainer sx={{ border: '1px solid #e0e4e9', borderRadius: 1.5 }}>
-      <Table sx={{ ...tableSx, '& td': { ...tableSx['& td'], py: 1, verticalAlign: 'middle' } }} aria-label="Lignes de dépense">
-        <TableHead><TableRow>
-          <TableCell>DESCRIPTION</TableCell><TableCell sx={{ width: 160 }}>CATÉGORIE</TableCell><TableCell sx={{ width: 80 }}>QTÉ</TableCell>
-          <TableCell sx={{ width: 130 }}>PRIX UNIT.</TableCell><TableCell align="right" sx={{ width: 120 }}>MONTANT</TableCell><TableCell sx={{ width: 52 }} />
-        </TableRow></TableHead>
-        <TableBody>
-          {lines.length === 0 && <TableRow><TableCell colSpan={6} sx={{ textAlign: 'center', color: '#66707d', py: '20px !important' }}>Aucune ligne. Ajoutez la première pour calculer le montant.</TableCell></TableRow>}
-          {lines.map((line, i) => <TableRow key={i}>
-            <TableCell><TextField fullWidth size="small" sx={cellInputSx} inputProps={{ 'aria-label': `Description ligne ${i + 1}` }}
-              value={String(line[LINE_KEYS.description] ?? '')} onChange={(e) => update(i, { [LINE_KEYS.description]: e.target.value })} /></TableCell>
-            <TableCell><TextField fullWidth size="small" sx={cellInputSx} inputProps={{ 'aria-label': `Catégorie ligne ${i + 1}` }}
-              value={String(line[LINE_KEYS.category] ?? '')} onChange={(e) => update(i, { [LINE_KEYS.category]: e.target.value })} /></TableCell>
-            <TableCell><TextField fullWidth size="small" type="number" sx={cellInputSx} inputProps={{ 'aria-label': `Quantité ligne ${i + 1}`, min: 0, style: { textAlign: 'right' } }}
-              value={line[LINE_KEYS.quantity] ?? ''} onChange={numeric(i, LINE_KEYS.quantity)} /></TableCell>
-            <TableCell><TextField fullWidth size="small" type="number" sx={cellInputSx} inputProps={{ 'aria-label': `Prix unitaire ligne ${i + 1}`, min: 0, style: { textAlign: 'right' } }}
-              value={line[LINE_KEYS.unitPrice] ?? ''} onChange={numeric(i, LINE_KEYS.unitPrice)} /></TableCell>
-            <TableCell align="right" sx={{ fontWeight: 700, whiteSpace: 'nowrap' }}>{money(lineAmount(line))}</TableCell>
-            <TableCell><IconButton aria-label={`Supprimer la ligne ${i + 1}`} onClick={() => remove(i)} sx={{ width: 44, height: 44, color: '#626c78' }}><TrashIcon /></IconButton></TableCell>
-          </TableRow>)}
-        </TableBody>
-      </Table>
-      <Box sx={{ px: 1, py: .5, borderTop: '1px solid #e2e5e9' }}>
-        <Button onClick={add} sx={{ minHeight: 44, fontWeight: 700, color: '#216e58' }}>+ Ajouter une ligne</Button>
-      </Box>
-    </TableContainer>
-  </Box>;
-}
-
 /* ---------- Layout ---------- */
 
-export function BusinessFormLayout({ model, controls, values, relations, onChange }: {
+export function BusinessFormLayout({ model, controls, values, relations }: {
   model: string; controls: Record<string, ReactNode>; values: Record<string, unknown>; relations: Record<string, ApiRecord[]>;
-  /** Optionnel : permet à l'éditeur de lignes d'écrire `details` et `amount_excluding_tax`. Sans lui, le champ `details` d'origine est affiché. */
-  onChange?: (name: string, value: unknown) => void;
 }) {
   const expense = model === 'budget.expense';
   const lines = parseLines(values.details);
-  const linesTotal = lines.reduce((sum, l) => sum + lineAmount(l), 0);
-  const total = Number(values.amount_excluding_tax || 0) + Number(values.tax_amount || 0);
+  let linesTotal = 0; let total = 0;
+  try { linesTotal = Number(expenseLinesTotal(lines)); total = Number(financialTotal(values.amount_excluding_tax, values.tax_amount)); } catch { /* Incomplete draft inputs */ }
+  const budgetLine = relations.budget_line?.find(row => String(row.id) === String(values.budget_line));
+
   const normal = Number(values.normal_hours || 0);
   const overtime = Number(values.overtime_hours || 0);
   const hours = normal + overtime;
@@ -101,19 +46,17 @@ export function BusinessFormLayout({ model, controls, values, relations, onChang
     : ['project', 'work_date', 'worker', 'task', 'normal_hours', 'overtime_hours']);
   const remaining = Object.entries(controls).filter(([name]) => !used.has(name));
 
-  const changeLines = (next: RawLine[]) => {
-    onChange?.('details', JSON.stringify(next));
-    // Le montant HT suit les lignes dès qu'il y en a au moins une.
-    if (next.length > 0) onChange?.('amount_excluding_tax', next.reduce((s, l) => s + lineAmount(l), 0));
-  };
-
   return <Stack spacing={3}>
+    {expense && budgetLine && <Alert severity={total > Number(budgetLine.available) ? 'warning' : 'info'}>
+      {String(budgetLine.project_name || '')} · {String(budgetLine.label)} · Disponible après engagements : {money(Number(budgetLine.available))} {String(values.currency || budgetLine.currency)}.
+      {total > Number(budgetLine.available) && ' Le montant dépasse le disponible ; une confirmation sera demandée à la validation.'}
+    </Alert>}
     <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: expense ? '2fr 1fr 1fr' : '2fr 1fr' }, gap: 2 }}>
       {expense ? <>{controls.budget_line}{controls.date}{controls.currency}</> : <>{controls.project}{controls.work_date}</>}
     </Box>
     {expense ? <>
       {controls.supplier_name}
-      {onChange ? <ExpenseLinesEditor lines={lines} onChange={changeLines} /> : controls.details}
+      {controls.details}
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1.8fr 1fr' }, alignItems: 'start', gap: 2.5 }}>
         <Box sx={{ border: '1px dashed #bdc6d1', borderRadius: 1.5, p: 2.5 }}>
           <Typography fontWeight={700} fontSize={13} mb={2}>Montants et taxes</Typography>

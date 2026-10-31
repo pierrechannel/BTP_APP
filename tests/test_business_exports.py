@@ -66,7 +66,7 @@ def test_attendance_pdf_period_tenant_and_permission(setup):
     user, _ = member(tenant, 'reader', {'workforce': ['read']})
     client.force_authenticate(user)
     assert client.get(endpoint + str(worker.pk) + '/attendance-pdf/').status_code == 200
-    assert client.post(endpoint + str(worker.pk) + '/archive/').status_code == 403
+    assert client.post(endpoint + str(worker.pk) + '/archive/').status_code == 404
 
 
 def test_weekly_planning_and_order_pdf(setup):
@@ -106,17 +106,19 @@ def test_report_pdf_includes_expense_lines_and_monthly_curve(setup, settings, tm
 
 
 @pytest.mark.parametrize('kind', ['worker', 'project'])
-def test_archive_restore_preserves_data_and_version(setup, kind):
+def test_archiving_is_removed_and_legacy_records_stay_accessible(setup, kind):
+    from django.utils import timezone
     tenant, _, project, _, client = setup
-    obj = Worker.objects.create(tenant=tenant, first_name='Alice', last_name='Archive') if kind == 'worker' else project
+    obj = Worker.objects.create(tenant=tenant, first_name='Alice', last_name='Legacy') if kind == 'worker' else project
+    obj.archived_at = timezone.now()
+    obj.save()
     endpoint = '/api/v1/workforce/workers/' if kind == 'worker' else '/api/v1/projects/'
-    response = client.post(f'{endpoint}{obj.pk}/archive/', HTTP_IF_MATCH='1')
+    assert client.post(f'{endpoint}{obj.pk}/archive/').status_code == 404
+    assert client.post(f'{endpoint}{obj.pk}/restore/').status_code == 404
+    response = client.get(f'{endpoint}{obj.pk}/')
     assert response.status_code == 200
-    assert response.data['archived_at']
-    assert client.get(f'{endpoint}{obj.pk}/').status_code == 404
+    assert 'archived_at' not in response.data
+    assert any(str(row['id']) == str(obj.pk) for row in client.get(endpoint).data['results'])
     assert any(str(row['id']) == str(obj.pk) for row in client.get(endpoint, {'archived': 'true'}).data['results'])
-    assert client.post(f'{endpoint}{obj.pk}/restore/', HTTP_IF_MATCH='1').status_code == 409
-    response = client.post(f'{endpoint}{obj.pk}/restore/', HTTP_IF_MATCH='2')
-    assert response.status_code == 200
     obj.refresh_from_db()
-    assert obj.archived_at is None and obj.deleted_at is None and obj.version == 3
+    assert obj.deleted_at is None

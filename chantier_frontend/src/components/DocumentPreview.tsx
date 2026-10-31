@@ -1,5 +1,6 @@
+import { FormTextField as TextField } from './FormTextField';
 import { useEffect, useState } from "react";
-import { Alert, Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, LinearProgress, MenuItem, Paper, Stack, TextField, Typography } from "@mui/material";
+import { Alert, Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, LinearProgress, MenuItem, Paper, Stack, Typography } from "@mui/material";
 import { api } from "../api/client";
 import { ApiRecord } from "../api/types";
 import { downloadFile, errorMessage, fetchCollection } from "../api/workspace";

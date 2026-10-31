@@ -1,10 +1,11 @@
+import { financialAction } from '../api/financialActions';
+import { FormTextField as TextField } from './FormTextField';
 import { useEffect, useState } from "react";
-import { Link as RouterLink } from "react-router-dom";
-import { Alert, Box, Button, Chip, Drawer, IconButton, LinearProgress, MenuItem, Paper, Stack, TextField, Typography } from "@mui/material";
+import { Link as RouterLink, useSearchParams } from "react-router-dom";
+import { Alert, Box, Button, Chip, Drawer, IconButton, LinearProgress, MenuItem, Paper, Stack, Typography } from "@mui/material";
 import CloseIcon from "@mui/icons-material/Close";
 import AddIcon from "@mui/icons-material/Add";
 import { DataGrid, GridColDef } from "@mui/x-data-grid";
-import { api } from "../api/client";
 import { ApiRecord } from "../api/types";
 import { errorMessage, fetchCollection, formatValue, notifyChange, versionHeaders } from "../api/workspace";
 import { resourceByModel } from "../resources";
@@ -23,9 +24,16 @@ export function BudgetWorkspace({ budget, revision, mode = "lines" }: { budget: 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
-  const [search, setSearch] = useState("");
-  const [lot, setLot] = useState("");
-  const [category, setCategory] = useState("");
+  const [params, setParams] = useSearchParams();
+  const setFilter = (key: string, value: string) => setParams(current => { const next = new URLSearchParams(current); if (value) next.set(key, value); else next.delete(key); return next; }, { replace: true });
+  const search = params.get('postSearch') || ''; const setSearch = (value: string) => setFilter('postSearch', value);
+  const expenseSearch = params.get('supplier') || ''; const setExpenseSearch = (value: string) => setFilter('supplier', value);
+  const status = params.get('status') || ''; const setStatus = (value: string) => setFilter('status', value);
+  const startDate = params.get('from') || ''; const setStartDate = (value: string) => setFilter('from', value);
+  const endDate = params.get('to') || ''; const setEndDate = (value: string) => setFilter('to', value);
+  const lot = params.get('lot') || ''; const setLot = (value: string) => setFilter('lot', value);
+  const category = params.get('category') || ''; const setCategory = (value: string) => setFilter('category', value);
+  const expensePost = params.get('post') || '';
   const [selected, setSelected] = useState<ApiRecord | null>(null);
   const [lineEditor, setLineEditor] = useState<ApiRecord | true | null>(null);
   const [expenseEditor, setExpenseEditor] = useState(false);
@@ -46,15 +54,15 @@ export function BudgetWorkspace({ budget, revision, mode = "lines" }: { budget: 
   const saved = () => { setRefresh((value) => value + 1); setMessage("Enregistrement effectué."); };
   const validate = async (row: ApiRecord) => {
     setBusy(true); setError("");
-    try { await api.post(`${expenseResource.endpoint}${row.id}/validate/`, {}, { headers: versionHeaders(row) }); notifyChange(); saved(); }
+    try { await financialAction(`${expenseResource.endpoint}${row.id}/validate/`, {}, versionHeaders(row)); notifyChange(); saved(); }
     catch (error) { setError(errorMessage(error)); } finally { setBusy(false); }
   };
-  const moneyColumn = (field: string, headerName: string): GridColDef => ({ field, headerName, minWidth: 145, flex: 1, align: "right", headerAlign: "right", renderCell: ({ value }) => <Typography variant="body2" fontWeight={600} color={field === "remaining" && Number(value) < 0 ? "error.main" : "text.primary"}>{formatValue(value, "amount")} {String(budget.currency)}</Typography> });
+  const moneyColumn = (field: string, headerName: string): GridColDef => ({ field, headerName, minWidth: 145, flex: 1, align: "right", headerAlign: "right", renderCell: ({ value }) => <Typography variant="body2" fontWeight={600} color={field === "available" && Number(value) < 0 ? "error.main" : "text.primary"}>{formatValue(value, "amount")} {String(budget.currency)}</Typography> });
   const columns: GridColDef[] = [
     { field: "label", headerName: "Poste budgétaire", minWidth: 200, flex: 1.4 },
     { field: "lot", headerName: "Lot", minWidth: 140, flex: 1, renderCell: ({ value }) => value ? <RelatedValue model="projects.lot" id={value} /> : <Typography variant="body2">Général</Typography> },
     { field: "category", headerName: "Catégorie", minWidth: 140, flex: 1 },
-    moneyColumn("amount", "Prévu"), moneyColumn("spent", "Consommé TTC"), moneyColumn("remaining", "Disponible"),
+    moneyColumn("amount", "Prévu"), moneyColumn("spent", "Consommé TTC"), moneyColumn("committed", "Engagé"), moneyColumn("available", "Disponible"),
     { field: "actions", headerName: "Actions", minWidth: 210, sortable: false, renderCell: ({ row }) => <Stack direction="row" gap={.5}>
       <Button size="small" onClick={() => setSelected(row)}>Dépenses</Button>{can("budget", "update") && <Button size="small" onClick={() => setLineEditor(row)}>Modifier</Button>}
     </Stack> },
@@ -67,11 +75,22 @@ export function BudgetWorkspace({ budget, revision, mode = "lines" }: { budget: 
     moneyColumn("amount_including_tax", "Montant TTC"),
     { field: "actions", headerName: "Actions", minWidth: 160, sortable: false, renderCell: ({ row }) => <Stack direction="row"><Button size="small" component={RouterLink} to={`${expenseResource.path}/${row.id}`}>Ouvrir</Button>{can("budget", "validate") && ["draft", "submitted"].includes(String(row.status)) && <Button size="small" disabled={busy} onClick={() => validate(row)}>Valider</Button>}</Stack> },
   ];
+  const visibleExpenses = expenses.filter(row => (!expensePost || row.budget_line === expensePost) && (!expenseSearch || String(row.supplier_name || '').toLocaleLowerCase().includes(expenseSearch.toLocaleLowerCase())) && (!status || row.status === status) && (!startDate || String(row.date) >= startDate) && (!endDate || String(row.date) <= endDate));
+  const expenseList = (items: ApiRecord[], cols = expenseColumns) => <>
+    <Box sx={{ display: { xs: 'none', md: 'block' } }}>{grid(items, cols)}</Box>
+    <Stack gap={1.5} sx={{ display: { xs: 'flex', md: 'none' } }}>{items.map(row => <Paper variant="outlined" key={row.id} sx={{ p: 2 }}>
+      <Stack direction="row" justifyContent="space-between"><Typography fontWeight={700}>{String(row.supplier_name || 'Sans fournisseur')}</Typography><StatusBadge value={row.status} /></Stack>
+      <Typography variant="body2">{formatValue(row.date, 'date')} ? {String(lines.find(line => line.id === row.budget_line)?.label || '')}</Typography>
+      <Typography fontWeight={700} mt={1}>{formatValue(row.amount_including_tax, 'amount')} {String(budget.currency)}</Typography>
+      <Button component={RouterLink} to={expenseResource.path + '/' + row.id}>Ouvrir</Button>
+      {can('budget', 'validate') && ['draft', 'submitted'].includes(String(row.status)) && <Button disabled={busy} onClick={() => validate(row)}>Valider</Button>}
+    </Paper>)}{!loading && !items.length && <Typography>Aucune dépense pour ces filtres.</Typography>}</Stack>
+  </>;
   const visibleLines = lines.filter((row) => (!search || `${row.label} ${row.category}`.toLocaleLowerCase("fr").includes(search.toLocaleLowerCase("fr"))) && (!lot || String(row.lot ?? "general") === lot) && (!category || row.category === category));
   const grid = (rows: ApiRecord[], columns: GridColDef[]) => <Box sx={{ minWidth: 0, overflow: "hidden", border: 1, borderColor: "divider", borderRadius: 1 }}><DataGrid rows={rows} columns={columns} autoHeight loading={loading} disableRowSelectionOnClick localeText={tableLocale} rowHeight={52} columnHeaderHeight={42} initialState={{ pagination: { paginationModel: { pageSize: 10, page: 0 } } }} pageSizeOptions={[10, 25, 50]} sx={dataTableSx} /></Box>;
   return <Paper variant="outlined" sx={{ p: { xs: 2, sm: 2.5 }, minWidth: 0 }}>
     <Stack direction={{ xs: "column", sm: "row" }} alignItems={{ sm: "center" }} justifyContent="space-between" gap={2} mb={2}>
-      <Box><Typography variant="h6">{mode === "lines" ? "Lignes budgétaires" : "Dépenses du budget"} <Chip size="small" label={mode === "lines" ? lines.length : expenses.length} /></Typography><Typography variant="caption" color="text.secondary">Devise héritée : {String(budget.currency)} · Consommé = dépenses validées et payées, en TTC.</Typography></Box>
+      <Box><Typography variant="h6">{mode === "lines" ? "Lignes budgétaires" : "Dépenses du budget"} <Chip size="small" label={mode === "lines" ? lines.length : expenses.length} /></Typography><Typography variant="caption" color="text.secondary">Devise héritée : {String(budget.currency)} · Consommé = validé + payé TTC. Disponible = prévu - consommé - soumis.</Typography></Box>
       {can("budget", "create") && <Button variant="contained" startIcon={<AddIcon />} onClick={() => mode === "lines" ? setLineEditor(true) : setExpenseEditor(true)}>{mode === "lines" ? "Ajouter un poste budgétaire" : "Ajouter une dépense"}</Button>}
     </Stack>
     {error && <Alert severity="error" sx={{ mb: 2 }} action={<Button onClick={() => setRefresh((value) => value + 1)}>Réessayer</Button>}>{error}</Alert>}
@@ -86,18 +105,27 @@ export function BudgetWorkspace({ budget, revision, mode = "lines" }: { budget: 
       <Box sx={{ display: { xs: "none", md: "block" } }}>{grid(visibleLines, columns)}</Box>
       <Stack sx={{ display: { xs: "flex", md: "none" } }} spacing={1.5}>{visibleLines.map((line) => <Paper variant="outlined" key={line.id} sx={{ p: 2 }}>
         <Typography fontWeight={700}>{String(line.label)}</Typography><Typography variant="caption" color="text.secondary">{String(line.category)}</Typography>
-        <Stack gap={.75} mt={1}>{[["amount", "Prévu"], ["spent", "Consommé TTC"], ["remaining", "Disponible"]].map(([field, label]) => <Stack direction="row" justifyContent="space-between" key={field}><Typography variant="caption">{label}</Typography><Typography variant="body2" color={field === "remaining" && Number(line[field]) < 0 ? "error.main" : "text.primary"}>{formatValue(line[field], "amount")} {String(budget.currency)}</Typography></Stack>)}</Stack>
+        <Stack gap={.75} mt={1}>{[["amount", "Prévu"], ["spent", "Consommé TTC"], ["committed", "Engagé"], ["available", "Disponible"]].map(([field, label]) => <Stack direction="row" justifyContent="space-between" key={field}><Typography variant="caption">{label}</Typography><Typography variant="body2" color={field === "available" && Number(line[field]) < 0 ? "error.main" : "text.primary"}>{formatValue(line[field], "amount")} {String(budget.currency)}</Typography></Stack>)}</Stack>
         <Stack direction="row" mt={1}><Button onClick={() => setSelected(line)}>Voir les dépenses</Button>{can("budget", "update") && <Button onClick={() => setLineEditor(line)}>Modifier</Button>}</Stack>
       </Paper>)}{!loading && !visibleLines.length && <Typography color="text.secondary">Aucun poste ne correspond à ces filtres.</Typography>}</Stack>
-    </> : grid(expenses, expenseColumns)}
+    </> : <>
+      <Stack direction={{ xs: 'column', sm: 'row' }} gap={1.5} mb={2} flexWrap="wrap">
+        <TextField label="Rechercher un fournisseur" size="small" value={expenseSearch} onChange={e => setExpenseSearch(e.target.value)} />
+        <TextField select label="Statut" size="small" value={status} onChange={e => setStatus(e.target.value)} sx={{ minWidth: 160 }}><MenuItem value="">Tous les statuts</MenuItem>{[['draft','Brouillon'],['submitted','Soumis'],['validated','Validé'],['paid','Payé'],['rejected','Rejeté']].map(([v,l]) => <MenuItem key={v} value={v}>{l}</MenuItem>)}</TextField>
+        <TextField select size="small" label="Poste budgétaire" value={expensePost} onChange={e => setFilter('post', e.target.value)} sx={{ minWidth: 180 }}><MenuItem value="">Tous les postes</MenuItem>{lines.map(line => <MenuItem key={line.id} value={String(line.id)}>{String(line.label)}</MenuItem>)}</TextField>
+        <TextField label="Du" size="small" type="date" value={startDate} onChange={e => setStartDate(e.target.value)} />
+        <TextField label="Au" size="small" type="date" value={endDate} error={!!startDate && !!endDate && endDate < startDate} onChange={e => setEndDate(e.target.value)} />
+        <Button onClick={() => setParams(current => { const next = new URLSearchParams(current); ['supplier', 'status', 'from', 'to', 'post'].forEach(key => next.delete(key)); return next; }, { replace: true })}>Réinitialiser</Button>
+      </Stack>{expenseList(visibleExpenses)}
+    </>}
     <Typography variant="caption" color="text.secondary" display="block" mt={2}>Les prévisions doivent être saisies sur la même base que les dépenses TTC. Le disponible n’est pas un solde bancaire.</Typography>
     <RecordEditor resource={lineResource} record={lineEditor && lineEditor !== true ? lineEditor : undefined} open={Boolean(lineEditor)} defaults={{ budget: budget.id, currency: budget.currency, project: budget.project }} fixedFields={["budget", "currency"]} compact allowRepeat onClose={() => setLineEditor(null)} onSaved={saved} />
     <Drawer anchor="right" open={Boolean(selected)} onClose={() => setSelected(null)} PaperProps={{ sx: { width: { xs: "100%", md: 780 }, maxWidth: "100vw" } }}>
       <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ p: 2.5, bgcolor: "primary.dark", color: "#fff" }}><Box><Typography variant="subtitle2">Dépenses du poste</Typography><Typography fontWeight={700}>{String(selected?.label ?? "")}</Typography></Box><IconButton aria-label="Fermer les dépenses" sx={{ color: "inherit" }} onClick={() => setSelected(null)}><CloseIcon /></IconButton></Stack>
       <Box sx={{ p: 2.5, overflowY: "auto" }}>{error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-        <Stack direction="row" gap={2} flexWrap="wrap" mb={2}>{[["amount", "Prévu"], ["spent", "Consommé TTC"], ["remaining", "Disponible"]].map(([field, label]) => <Box key={field}><Typography variant="caption">{label}</Typography><Typography fontWeight={700}>{formatValue(selected?.[field], "amount")} {String(budget.currency)}</Typography></Box>)}</Stack>
+        <Stack direction="row" gap={2} flexWrap="wrap" mb={2}>{[["amount", "Prévu"], ["spent", "Consommé TTC"], ["committed", "Engagé"], ["available", "Disponible"]].map(([field, label]) => <Box key={field}><Typography variant="caption">{label}</Typography><Typography fontWeight={700}>{formatValue(selected?.[field], "amount")} {String(budget.currency)}</Typography></Box>)}</Stack>
         {can("budget", "create") && <Button variant="contained" startIcon={<AddIcon />} sx={{ mb: 2 }} onClick={() => setExpenseEditor(true)}>Ajouter une dépense</Button>}
-        {grid(expenses.filter((row) => row.budget_line === selected?.id), expenseColumns.filter((column) => column.field !== "budget_line"))}
+        {expenseList(expenses.filter((row) => row.budget_line === selected?.id), expenseColumns.filter((column) => column.field !== "budget_line"))}
       </Box>
     </Drawer>
     <RecordEditor resource={expenseResource} open={expenseEditor} defaults={{ ...(selected ? { budget_line: selected.id } : {}), currency: budget.currency, project: budget.project }} fixedFields={selected ? ["budget_line", "currency"] : ["currency"]} onClose={() => setExpenseEditor(false)} onSaved={saved} />

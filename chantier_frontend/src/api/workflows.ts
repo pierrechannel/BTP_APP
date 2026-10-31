@@ -24,7 +24,11 @@ const workflows: Record<string, RelatedWorkflow[]> = {
 export const relatedWorkflows = (model: string) => workflows[model] ?? [];
 
 export function isRecordLocked(model: string, record: ApiRecord) {
-  return (model === "resources.purchaseorder" && record.status !== "draft")
+  return (model === 'progress.photo' && !!record.report_status && record.report_status !== 'draft')
+    || (model === 'progress.snag' && record.status === 'closed')
+    || (model === 'progress.dailyreport' && record.status !== 'draft')
+    || (model === 'budget.expense' && record.status !== 'draft')
+    || (model === "resources.purchaseorder" && record.status !== "draft")
     || (model === "resources.purchaseorderline" && record.order_status !== "draft")
     || (["budget.expense", "budget.invoice", "progress.dailyreport"].includes(model) && ["validated", "paid"].includes(String(record.status)))
     || (model === "workforce.timeentry" && Boolean(record.is_validated))
@@ -32,6 +36,8 @@ export function isRecordLocked(model: string, record: ApiRecord) {
     || (model === "documents.approvalworkflow" && record.status !== "pending");
 }
 export const isDeletionLocked = (model: string, record: ApiRecord) =>
+  (model === "progress.photo" && !!record.report_status && record.report_status !== "draft") ||
+  (model === "progress.dailyreport" && record.status !== "draft") ||
   (model === "resources.purchaseorder" && record.status !== "draft")
   || (model === "resources.purchaseorderline" && record.order_status !== "draft")
   || (["budget.expense", "budget.invoice"].includes(model) && ["validated", "paid"].includes(String(record.status)))
@@ -74,6 +80,8 @@ function money(value: bigint) {
   return `${cents / 100n}.${String(cents % 100n).padStart(2, "0")}`;
 }
 export const orderLineTotal = (line: Record<string, unknown>) => money(scaled(line.quantity, 3) * scaled(line.unit_price, 2));
+export const expenseLinesTotal = (lines: Array<Record<string, unknown>>) => money(lines.reduce((total, line) => total + scaled(line.quantity, 3) * scaled(line.unit_price, 2), 0n));
+export const financialTotal = (amount: unknown, tax: unknown) => money((scaled(amount || '0', 2) + scaled(tax || '0', 2)) * 1000n);
 export function orderTotals(lines: Record<string, unknown>[]) {
   const totals = new Map<string, bigint>();
   for (const line of lines) {
@@ -95,11 +103,12 @@ export const formHints: Record<string, string> = {
 };
 
 const formOrders: Record<string, string[]> = {
+  "budget.expense": ["budget_line", "date", "currency", "supplier_name", "invoice", "details", "amount_excluding_tax", "tax_amount"],
   "budget.budgetline": ["budget", "label", "category", "lot", "amount", "currency"],
   "resources.purchaseorder": ["order_number", "project", "supplier", "ordered_at", "status"],
   "resources.purchaseorderline": ["purchase_order", "material", "quantity", "unit_price", "currency"],
   "resources.stockmovement": ["movement_type", "material", "quantity", "movement_date", "source_location", "target_location", "notes"],
-  "workforce.worker": ["first_name", "last_name", "birth_date", "identity_type", "identity_number", "address", "phone", "job_title", "payment_basis", "hourly_rate", "daily_rate", "monthly_rate", "currency"],
+  "workforce.worker": ["first_name", "last_name", "birth_date", "identity_type", "identity_number", "identity_document_front", "identity_document_back", "address", "phone", "job_title", "payment_basis", "hourly_rate", "daily_rate", "monthly_rate", "currency"],
   "workforce.timeentry": ["worker", "project", "task", "work_date", "normal_hours", "overtime_hours"],
   "workforce.workercertification": ["worker", "certification", "issued_at", "expires_at"],
   "documents.documentversion": ["document", "version_label", "file", "original_name", "is_current"],
