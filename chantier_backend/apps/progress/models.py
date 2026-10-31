@@ -4,6 +4,7 @@ from apps.common.models import TenantOwnedModel
 
 
 class DailyReport(TenantOwnedModel):
+    workflow_history = models.JSONField(default=list, blank=True)
     correction_reason = models.TextField(blank=True)
     submitted_at = models.DateTimeField(null=True, blank=True)
     validated_at = models.DateTimeField(null=True, blank=True)

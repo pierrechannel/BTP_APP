@@ -17,7 +17,7 @@ from apps.progress.services import resolve_snag, submit_daily_report, validate_d
 class DailyReportViewSet(TenantModelViewSet):
     permission_action_map = {**TenantModelViewSet.permission_action_map, 'correction': 'validate', 'pdf': 'read'}
     ordering = ['-report_date', '-created_at']
-    queryset = DailyReport.objects.select_related("project", "tenant")
+    queryset = DailyReport.objects.select_related("project", "tenant", "created_by", "validated_by")
     serializer_class = DailyReportSerializer
     filterset_fields = ["project", "report_date", "status"]
     search_fields = ["weather", "work_done", "difficulties"]

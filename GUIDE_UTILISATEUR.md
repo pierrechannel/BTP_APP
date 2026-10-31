@@ -20,6 +20,8 @@ Les onglets **Lots**, **Données associées**, **Informations** et **Traçabilit
 
 ### Journal de chantier : rapports, photos et validation
 
+La vue d’ensemble d’un rapport présente les travaux réalisés et les difficultés avant la galerie de photos. Les actions de soumission, correction, validation et téléchargement PDF sont regroupées en haut. La colonne de suivi affiche l’auteur et les dates à l’heure de Bujumbura. L’historique conserve chaque soumission, demande de correction avec son motif et validation. Pour les anciens rapports, seules les informations déjà enregistrées sont affichées ; les dates manquantes sont signalées.
+
 Dans **Journal de chantier**, la liste chronologique propose une recherche et des filtres de période et de statut. Les indicateurs comptent les brouillons, rapports soumis et validés sur la période ; les réserves en retard sont calculées à ce jour pour le chantier sélectionné.
 
 **Nouveau rapport** ouvre une page dédiée. Choisissez le chantier et la date, renseignez la météo, décrivez les travaux et les difficultés, puis ajoutez les photos du terrain (30 maximum, 10 Mo par photo). Les photos et leurs retraits sont sauvegardés avec le brouillon. Plusieurs rapports par chantier et par jour sont autorisés.

@@ -6,6 +6,21 @@ from apps.progress.services import sync_task_progress
 
 
 class DailyReportSerializer(TenantOwnedModelSerializer):
+    workflow_history = serializers.SerializerMethodField()
+    author_name = serializers.SerializerMethodField()
+    validator_name = serializers.SerializerMethodField()
+
+    def get_workflow_history(self, instance):
+        from apps.progress.services import report_history
+        return report_history(instance)
+
+    def get_author_name(self, instance):
+        from apps.progress.services import user_label
+        return user_label(instance.created_by)
+
+    def get_validator_name(self, instance):
+        from apps.progress.services import user_label
+        return user_label(instance.validated_by) if instance.validated_by_id else ''
     project_name = serializers.CharField(source='project.name', read_only=True)
     photos = serializers.SerializerMethodField()
     photo_files = serializers.ListField(child=serializers.ImageField(), required=False, write_only=True, max_length=30)
@@ -45,7 +60,12 @@ class DailyReportSerializer(TenantOwnedModelSerializer):
     def create(self, validated_data):
         files = validated_data.pop('photo_files', [])
         validated_data.pop('removed_photos', None)
-        return self.persist_photos(super().create(validated_data), files, [])
+        report = super().create(validated_data)
+        from apps.progress.services import user_label
+        user = self.context['request'].user
+        report.workflow_history = [{'action': 'created', 'at': report.created_at.isoformat(), 'actor': user_label(user), 'actor_id': str(user.pk)}]
+        report.save(update_fields=['workflow_history'])
+        return self.persist_photos(report, files, [])
 
     @transaction.atomic
     def update(self, instance, validated_data):

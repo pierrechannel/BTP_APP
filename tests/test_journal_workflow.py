@@ -38,6 +38,11 @@ def test_journal_submission_correction_and_validated_deletion_lock(setup):
     validated = client.post(url + 'validate/')
     assert validated.status_code == 200 and validated.data['validated_at']
     assert str(validated.data['validated_by']) == str(setup[1].pk)
+    history = validated.data['workflow_history']
+    assert [event['action'] for event in history] == ['created', 'submitted', 'correction', 'submitted', 'validated']
+    assert history[2]['reason'] == 'Précisez les quantités'
+    assert all(event['at'] and event['actor_id'] == str(setup[1].pk) for event in history[1:])
+    assert validated.data['validator_name']
     assert client.delete(url).status_code == 400
     assert client.delete(f'/api/v1/projects/{setup[2].pk}/').status_code == 400
     assert client.post(url + 'correction/', {'comment': 'Changed'}).status_code == 400
@@ -49,6 +54,8 @@ def test_journal_bulk_photos_and_pdf(setup, settings, tmp_path):
     response = client.post(ROOT + 'daily-reports/', {'project': str(setup[2].pk), 'report_date': '2026-10-31', 'work_done': 'Fondations', 'photo_files': [image(), image()]}, format='multipart')
     assert response.status_code == 201, response.data
     assert len(response.data['photos']) == 2
+    assert [event['action'] for event in response.data['workflow_history']] == ['created']
+    assert not response.data['workflow_history'][0].get('legacy')
     url = ROOT + f"daily-reports/{response.data['id']}/"
     pdf = client.get(url + 'pdf/')
     assert pdf.status_code == 200 and pdf['Content-Type'] == 'application/pdf'

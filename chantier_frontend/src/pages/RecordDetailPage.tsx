@@ -1,4 +1,5 @@
-import { JournalPhotos, JournalPhoto } from '../components/JournalPhotos';
+import { JournalOverview } from '../components/JournalOverview';
+import DownloadOutlinedIcon from '@mui/icons-material/DownloadOutlined';
 import { ProjectOverview } from '../components/ProjectOverview';
 import { ExpenseReceipts, Receipt } from '../components/ExpenseReceipts';
 import { InvoiceAttachment } from '../components/InvoiceAttachment';
@@ -137,7 +138,17 @@ export function RecordDetailPage({ resource }: { resource: ResourceConfig }) {
     && !(action.endpoint === "transition-status" && record?.status === "closed"));
   const invalidProgress = action?.field === "progress_percent" && (!Number.isInteger(Number(actionValue)) || Number(actionValue) < 0 || Number(actionValue) > 100);
   const focused = ["resources.purchaseorder", "budget.budget", "projects.project"].includes(resource.model);
-  const hasRelated = resource.model !== "budget.budget" && relatedWorkflows(resource.model).some((link) => resourceByModel[link.model] && can(resourceByModel[link.model].group));
+  const hasRelated = !["budget.budget", "progress.dailyreport"].includes(resource.model) && relatedWorkflows(resource.model).some((link) => resourceByModel[link.model] && can(resourceByModel[link.model].group));
+
+  const actionButtons = record && <Stack direction="row" gap={1.5} flexWrap="wrap">{actions.map((item, index) => <Button key={`${item.endpoint}:${item.label}`} disabled={busy} variant={index === 0 && !item.download ? "contained" : "outlined"} aria-label={item.label} title={item.label} sx={resource.model === "progress.dailyreport" && item.download ? { minWidth: 38, px: 1 } : undefined} onClick={async () => {
+          if (item.download) {
+            setBusy(true); setError("");
+            try { await downloadFile(`${endpoint}${item.endpoint}/`, String(record.original_name ?? (resource.model === "progress.photo" ? String(record.image ?? "photo.jpg").split("/").at(-1) : `rapport-${id}.${resource.model === "progress.dailyreport" ? "pdf" : "json"}`))); }
+            catch (error) { setError(errorMessage(error)); } finally { setBusy(false); }
+            return;
+          }
+          setAction(item); setActionError(""); setActionComment(""); setActionValue(item.field === "progress_percent" ? String(record.progress_percent ?? 0) : "");
+        }}>{resource.model === "progress.dailyreport" && item.download ? <DownloadOutlinedIcon fontSize="small" /> : item.label}</Button>)}</Stack>;
 
   return <Stack spacing={2}>
     <BusinessExports model={resource.model} id={id} />
@@ -168,7 +179,7 @@ export function RecordDetailPage({ resource }: { resource: ResourceConfig }) {
           {hasRelated && <Tab value="related" label="Données associées" id="detail-tab-related" aria-controls="detail-related" />}
           <Tab value="tracking" label="Traçabilité" id="detail-tab-tracking" aria-controls="detail-tracking" />
         </Tabs>
-        {locked && <Alert severity="info">Cette fiche est finalisée. Ses informations ne peuvent plus être modifiées.{deletionLocked && " Sa suppression est également interdite."}</Alert>}
+        {locked && resource.model !== "progress.dailyreport" && <Alert severity="info">Cette fiche est finalisée. Ses informations ne peuvent plus être modifiées.{deletionLocked && " Sa suppression est également interdite."}</Alert>}
         {resource.model === "budget.budget" && <BudgetSummary record={record} revision={revision} />}
         {resource.model === "budget.budget" && <Box hidden={!["overview", "expenses"].includes(section)}><BudgetWorkspace budget={record} revision={revision} mode={section === "expenses" ? "expenses" : "lines"} /></Box>}
         <Stack id="detail-overview" role="tabpanel" aria-labelledby="detail-tab-overview" hidden={section !== "overview"} spacing={2} sx={{ display: section === "overview" ? "flex" : "none" }}>
@@ -176,7 +187,7 @@ export function RecordDetailPage({ resource }: { resource: ResourceConfig }) {
         {resource.model === "resources.purchaseorder" && <PurchaseOrderLines order={record} revision={revision} />}
         {resource.model === "budget.expense" && <ExpenseReceipts expenseId={String(record.id)} receipts={(record.receipts || []) as Receipt[]} />}
         {resource.model === "budget.invoice" && <InvoiceAttachment invoice={record} />}
-        {resource.model === "progress.dailyreport" && <Paper variant="outlined" sx={{ p: 2 }}><JournalPhotos photos={(record.photos || []) as JournalPhoto[]} /></Paper>}
+        {resource.model === "progress.dailyreport" && <JournalOverview report={record} actions={actionButtons} />}
         {resource.model === "progress.photo" && <PhotoPreview record={record} />}
         {resource.model === "reports.reportrun" && <ReportPreview record={record} />}
         {["documents.document", "documents.documentversion"].includes(resource.model) && <DocumentPreview record={record} isVersion={resource.model === "documents.documentversion"} revision={revision} />}
@@ -185,18 +196,10 @@ export function RecordDetailPage({ resource }: { resource: ResourceConfig }) {
           {!stock.length && <Typography color="text.secondary">Créez un dépôt, puis enregistrez un mouvement de stock.</Typography>}
           <Stack direction="row" gap={2} flexWrap="wrap">{stock.map((item) => <Box key={item.location} sx={{ p: 2, bgcolor: "#f4f7f0", borderRadius: 2, minWidth: 160 }}><Typography variant="caption" color="text.secondary">{item.name}</Typography><Typography variant="h5">{Number(item.quantity).toLocaleString("fr-FR")} <Typography component="span" variant="body2">{item.unit}</Typography></Typography></Box>)}</Stack>
         </Paper>}
-        {actions.length > 0 && <Paper variant="outlined" sx={{ p: 2 }}><Stack direction="row" gap={1.5} flexWrap="wrap">{actions.map((item, index) => <Button key={`${item.endpoint}:${item.label}`} disabled={busy} variant={index === 0 ? "contained" : "outlined"} onClick={async () => {
-          if (item.download) {
-            setBusy(true); setError("");
-            try { await downloadFile(`${endpoint}${item.endpoint}/`, String(record.original_name ?? (resource.model === "progress.photo" ? String(record.image ?? "photo.jpg").split("/").at(-1) : `rapport-${id}.json`))); }
-            catch (error) { setError(errorMessage(error)); } finally { setBusy(false); }
-            return;
-          }
-          setAction(item); setActionError(""); setActionComment(""); setActionValue(item.field === "progress_percent" ? String(record.progress_percent ?? 0) : "");
-        }}>{item.label}</Button>)}</Stack></Paper>}
+        {resource.model !== "progress.dailyreport" && actions.length > 0 && <Paper variant="outlined" sx={{ p: 2 }}>{actionButtons}</Paper>}
         {typeof record.progress_percent === "number" && <Paper variant="outlined" sx={{ p: 3 }}><Stack direction="row" justifyContent="space-between" mb={1.5}><Typography fontWeight={600}>Avancement de la tâche</Typography><Typography fontWeight={700}>{record.progress_percent} %</Typography></Stack>
           <LinearProgress variant="determinate" value={record.progress_percent} sx={{ height: 10, borderRadius: 5 }} /></Paper>}
-        {!focused && resource.model !== "reports.reportrun" && <DetailInformation record={record} model={resource.model} fields={fields} />}
+        {!focused && !["reports.reportrun", "progress.dailyreport"].includes(resource.model) && <DetailInformation record={record} model={resource.model} fields={fields} />}
         </Stack>
         {focused && <Box hidden={section !== "information"}><DetailInformation record={record} model={resource.model} fields={fields} /></Box>}
         {resource.model === "projects.project" && can("projects") && section === "lots" && <Box id="detail-lots" role="tabpanel" aria-labelledby="detail-tab-lots"><RelatedRecords model={resource.model} record={record} revision={revision} onlyModel="projects.lot" /></Box>}
