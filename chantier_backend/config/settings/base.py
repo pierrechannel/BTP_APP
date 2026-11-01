@@ -129,7 +129,11 @@ SPECTACULAR_SETTINGS = {
 }
 
 CORS_ALLOWED_ORIGINS = [
-    origin.strip() for origin in os.getenv("CORS_ALLOWED_ORIGINS", "").split(",") if origin
+    origin.strip()
+    for origin in os.getenv(
+        "CORS_ALLOWED_ORIGINS", "https://btp-app-rouge.vercel.app"
+    ).split(",")
+    if origin.strip()
 ]
 from corsheaders.defaults import default_headers
 CORS_ALLOW_HEADERS = list(default_headers) + ["x-tenant-id", "if-match"]
