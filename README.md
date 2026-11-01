@@ -59,13 +59,19 @@ Couverture des fonctions backend, parcours commandes/lignes et verification UI:
   suivi des files et choix de l'entreprise pour les listes utilisateurs/audit.
 
 Le frontend est disponible sur `http://127.0.0.1:5175` et contacte par defaut
-l'API sur `http://185.98.128.176:8020/api/v1`. Pour changer cette adresse,
-definir `VITE_API_BASE_URL` dans `chantier_frontend/.env` avant de demarrer Vite
-ou de construire le frontend. Le backend doit autoriser l'origine du frontend via CORS.
-
-Avec `VITE_API_BASE_URL=/api/v1`, le proxy Vite `/api` contacte egalement
+`/api/v1` sur la meme origine. Le proxy Vite `/api` transmet ces requetes a
 `http://185.98.128.176:8020`. Il laisse passer les requetes OPTIONS vers Django
 (`server.cors = false`), qui fournissent les metadonnees des formulaires.
+
+Sur Vercel, choisir `chantier_frontend` comme Root Directory et garder
+`VITE_API_BASE_URL=/api/v1` (ou supprimer cette variable). Le fichier
+`chantier_frontend/vercel.json` transmet `/api/*` au backend et sert `index.html`
+pour les routes React comme `/login`. Le navigateur contacte ainsi Vercel en HTTPS,
+sans requete HTTP bloquee pour contenu mixte. Redeployer apres tout changement
+de variable Vite, car sa valeur est integree au build.
+
+Pour un autre hebergement, configurer le meme proxy `/api` ou definir
+`VITE_API_BASE_URL` vers une API HTTPS avant le build.
 
 Compte demo cree par `seed_demo`:
 
