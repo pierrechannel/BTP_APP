@@ -59,7 +59,8 @@ Couverture des fonctions backend, parcours commandes/lignes et verification UI:
   suivi des files et choix de l'entreprise pour les listes utilisateurs/audit.
 
 Le frontend est disponible sur `http://127.0.0.1:5175` et contacte par defaut
-`/api/v1` sur la meme origine. Le proxy Vite `/api` transmet ces requetes a
+`https://ruvubu-hotel.com:8020/api/v1` directement. Avec
+`VITE_API_BASE_URL=/api/v1`, le proxy Vite `/api` transmet les requetes a
 `https://ruvubu-hotel.com:8020`. Il laisse passer les requetes OPTIONS vers Django
 (`server.cors = false`), qui fournissent les metadonnees des formulaires.
 
@@ -67,12 +68,14 @@ Les proxies Vite et Vercel utilisent le domaine correspondant au certificat
 Let's Encrypt et verifient le certificat HTTPS. Le backend Django doit inclure
 `ruvubu-hotel.com` dans `DJANGO_ALLOWED_HOSTS`.
 
-Sur Vercel, choisir `chantier_frontend` comme Root Directory et garder
-`VITE_API_BASE_URL=/api/v1` (ou supprimer cette variable). Le fichier
-`chantier_frontend/vercel.json` transmet `/api/*` au backend et sert `index.html`
-pour les routes React comme `/login`. Le navigateur contacte ainsi Vercel en HTTPS,
-sans requete HTTP bloquee pour contenu mixte. Redeployer apres tout changement
-de variable Vite, car sa valeur est integree au build.
+Sur Vercel, choisir `chantier_frontend` comme Root Directory et definir
+`VITE_API_BASE_URL=https://ruvubu-hotel.com:8020/api/v1` (ou supprimer cette
+variable pour utiliser cette valeur par defaut). Le backend doit autoriser
+`https://btp-app-rouge.vercel.app` dans `CORS_ALLOWED_ORIGINS` ainsi que
+l'origine locale pour le developpement. Les appels API vont directement au
+backend HTTPS. Le fichier `chantier_frontend/vercel.json` conserve un proxy
+optionnel `/api/*` et sert `index.html` pour les routes React comme `/login`.
+Redeployer apres tout changement de variable Vite, car sa valeur est integree au build.
 
 Pour un autre hebergement, configurer le meme proxy `/api` ou definir
 `VITE_API_BASE_URL` vers une API HTTPS avant le build.
