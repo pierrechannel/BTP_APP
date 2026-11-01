@@ -20,7 +20,7 @@ export default defineConfig({
     server: {
         cors: false,
         port: 5175,
-        proxy: { "/api": "http://127.0.0.1:8000" },
+        proxy: { "/api": "http://185.98.128.176:8020" },
     },
-    preview: { cors: false, proxy: { "/api": "http://127.0.0.1:8000" } },
+    preview: { cors: false, proxy: { "/api": "http://185.98.128.176:8020" } },
 });

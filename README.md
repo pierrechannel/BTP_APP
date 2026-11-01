@@ -58,13 +58,14 @@ Couverture des fonctions backend, parcours commandes/lignes et verification UI:
 - Console plateforme: compteurs globaux, controle reel de la connexion a la base,
   suivi des files et choix de l'entreprise pour les listes utilisateurs/audit.
 
-Le proxy Vite laisse passer les requetes OPTIONS vers Django (`server.cors = false`):
-elles fournissent les metadonnees des formulaires. Le navigateur contacte `/api`
-sur la meme origine que l'interface, sans dependance a un port CORS particulier.
+Le frontend est disponible sur `http://127.0.0.1:5175` et contacte par defaut
+l'API sur `http://185.98.128.176:8020/api/v1`. Pour changer cette adresse,
+definir `VITE_API_BASE_URL` dans `chantier_frontend/.env` avant de demarrer Vite
+ou de construire le frontend. Le backend doit autoriser l'origine du frontend via CORS.
 
-Le frontend est disponible sur `http://127.0.0.1:5175`. Son proxy `/api` contacte
-le backend sur `http://127.0.0.1:8005`. Ces ports evitent les autres services locaux.
-En production, configurer le reverse proxy `/api` ou `VITE_API_BASE_URL` au moment du build.
+Avec `VITE_API_BASE_URL=/api/v1`, le proxy Vite `/api` contacte egalement
+`http://185.98.128.176:8020`. Il laisse passer les requetes OPTIONS vers Django
+(`server.cors = false`), qui fournissent les metadonnees des formulaires.
 
 Compte demo cree par `seed_demo`:
 
