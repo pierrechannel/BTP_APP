@@ -18,8 +18,7 @@ export default defineConfig({
   server: {
     cors: false,
     port: 5175,
-    // The development API currently uses a self-signed certificate.
-    proxy: { "/api": { target: "https://185.98.128.176:8020", secure: false } },
+    proxy: { "/api": { target: "https://ruvubu-hotel.com:8020", changeOrigin: true } },
   },
-  preview: { cors: false, proxy: { "/api": { target: "https://185.98.128.176:8020", secure: false } } },
+  preview: { cors: false, proxy: { "/api": { target: "https://ruvubu-hotel.com:8020", changeOrigin: true } } },
 });

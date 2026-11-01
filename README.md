@@ -60,13 +60,12 @@ Couverture des fonctions backend, parcours commandes/lignes et verification UI:
 
 Le frontend est disponible sur `http://127.0.0.1:5175` et contacte par defaut
 `/api/v1` sur la meme origine. Le proxy Vite `/api` transmet ces requetes a
-`https://185.98.128.176:8020`. Il laisse passer les requetes OPTIONS vers Django
+`https://ruvubu-hotel.com:8020`. Il laisse passer les requetes OPTIONS vers Django
 (`server.cors = false`), qui fournissent les metadonnees des formulaires.
 
-Le proxy Vite de developpement et de preview utilise `secure: false` uniquement
-pour cette API, dont le certificat est actuellement auto-signe. Retirer cette
-exception apres installation d'un certificat de confiance. Cette option ne
-s'applique pas au proxy Vercel : l'API doit y presenter un certificat HTTPS valide.
+Les proxies Vite et Vercel utilisent le domaine correspondant au certificat
+Let's Encrypt et verifient le certificat HTTPS. Le backend Django doit inclure
+`ruvubu-hotel.com` dans `DJANGO_ALLOWED_HOSTS`.
 
 Sur Vercel, choisir `chantier_frontend` comme Root Directory et garder
 `VITE_API_BASE_URL=/api/v1` (ou supprimer cette variable). Le fichier
